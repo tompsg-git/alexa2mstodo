@@ -1,0 +1,12 @@
+{
+    "amazon_url": "amazon.de",
+    "amazon_username": "deine@email.de",
+    "amazon_password": "dein-amazon-passwort",
+    "amazon_mfa_secret": "",
+
+    "ms_client_id": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "ms_tenant_id": "consumers",
+    "ms_list_name": "Einkaufsliste",
+
+    "_comment_refresh_token": "Wird beim ersten Start automatisch gesetzt:"
+}
