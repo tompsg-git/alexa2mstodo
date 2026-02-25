@@ -3,5 +3,6 @@ __pycache__/
 *.pyo
 .env
 config.json
+alexa_cookie,json
 state.json
 .DS_Store

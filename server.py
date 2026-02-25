@@ -19,7 +19,6 @@ import time
 from synchronizer import Synchronizer
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/config/config.json")
-SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "30"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
@@ -42,9 +41,10 @@ def load_config(path: str) -> dict:
 def main():
     log.info("alexa2mstodo starting")
     log.info("Config: %s", CONFIG_PATH)
+    config = load_config(CONFIG_PATH)
+    SYNC_INTERVAL = int(config.get("sync_interval", os.environ.get("SYNC_INTERVAL", "30")))
     log.info("Sync interval: %ds", SYNC_INTERVAL)
 
-    config = load_config(CONFIG_PATH)
     # Expose config path so mstodo.py can write the refresh token back
     os.environ["CONFIG_PATH"] = CONFIG_PATH
 

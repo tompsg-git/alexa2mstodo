@@ -116,6 +116,8 @@ class Synchronizer:
         try:
             alexa_items: list[AlexaItem] = self.alexa.get_active_items()
             todo_items: list[MSTodoItem] = self.todo.get_items()
+            # log.info("Alexa items: %s", [i.value for i in alexa_items])
+            # log.info("Todo items: %s", [i.value for i in todo_items])
         except Exception as e:
             log.error("Failed to fetch items: %s", e)
             return

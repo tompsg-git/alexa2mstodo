@@ -23,7 +23,7 @@ import requests
 log = logging.getLogger(__name__)
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-SCOPES = ["Tasks.ReadWrite", "offline_access"]
+SCOPES = ["Tasks.ReadWrite"]
 
 
 class MSTodoItem:

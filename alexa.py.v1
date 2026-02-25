@@ -138,6 +138,27 @@ class AlexaAPI:
             return self._list_id
         raise RuntimeError(f"No Alexa lists found. Response: {data}")
 
+    def _get_list_id(self):
+        if self._list_id:
+            return self._list_id
+        url = f"https://www.{self.amazon_url}/alexashoppinglists/api/v2/lists/fetch"
+        data = self._post(url, {})
+        log.debug("Alexa lists: %s", data)
+        lists = data.get("listInfoList", [])
+        for lst in lists:
+            name = (lst.get("listName") or lst.get("listType") or "").lower()
+            ltype = (lst.get("listType") or "").lower()
+            log.info("Alexa: available list '%s' type='%s'", name, ltype)
+            if "shopping" in name or "shopping" in ltype or "einkauf" in name or ltype == "shop":
+                self._list_id = lst.get("listId")
+                log.info("Alexa: using list '%s' (id=%s)", name, self._list_id)
+                return self._list_id
+        if lists:
+            self._list_id = lists[0].get("listId")
+            log.warning("Alexa: using first list as fallback: %s", self._list_id)
+            return self._list_id
+        raise RuntimeError(f"No Alexa lists found. Response: {data}")
+
     def get_items(self):
         lid = self._get_list_id()
         url = f"https://www.{self.amazon_url}/alexashoppinglists/api/v2/lists/{lid}/items/fetch"
@@ -161,12 +182,12 @@ class AlexaAPI:
         lid = self._get_list_id()
         log.info("Alexa: adding '%s'", value)
         url = f"https://www.{self.amazon_url}/alexashoppinglists/api/v2/lists/{lid}/items"
-        data = self._post(url, {"items": [{"itemName": value, "quantity": "1", "itemType": "KEYWORD"}]})
+        data = self._post(url, {"items": [{"value": value, "quantity": "1"}]})
         log.debug("Alexa add response: %s", data)
         items = data.get("itemInfoList", [])
         if items:
             i = items[0]
-            return AlexaItem(item_id=i["itemId"], value=i.get("itemName", value), version=i.get("version", 1))
+            return AlexaItem(item_id=i["id"], value=i.get("value", value), version=i.get("version", 1))
         return AlexaItem(item_id="unknown", value=value)
 
     def delete_item(self, item):
