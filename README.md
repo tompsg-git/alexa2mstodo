@@ -1,6 +1,6 @@
 # alexa2mstodo
 
-Bidirektionaler Sync zwischen der **Alexa Einkaufsliste** und **Microsoft To Do** — ohne Selenium, ohne Browser-Automatisierung.
+Sync zwischen der **Alexa Einkaufsliste** und **Microsoft To Do** — ohne Selenium, ohne Browser-Automatisierung.
 
 Inspiriert von [alexiri/alexa2anylist](https://github.com/alexiri/alexa2anylist), jedoch mit Microsoft To Do als Ziel statt AnyList.
 
@@ -8,57 +8,98 @@ Inspiriert von [alexiri/alexa2anylist](https://github.com/alexiri/alexa2anylist)
 
 ## Funktionsweise
 
-Jede `SYNC_INTERVAL` Sekunden (Standard: 30 s) vergleicht der Dienst den aktuellen Zustand beider Listen gegen einen gespeicherten Anker-Zustand (`state.json`):
+Jede `sync_interval` Sekunden (Standard: 30 s) vergleicht der Dienst den aktuellen Zustand beider Listen gegen einen gespeicherten Anker-Zustand (`state.json`).
 
-- **Neues Item auf Alexa** → wird in MS To Do angelegt
-- **Neues Item in MS To Do** → wird in Alexa angelegt
-- **Item von Alexa gelöscht/abgehakt** → wird in MS To Do gelöscht
-- **Item aus MS To Do gelöscht** → wird von Alexa gelöscht
-- **Konflikt** (beide Seiten geändert) → MS To Do gewinnt
+### Sync-Modi (`sync_direction`)
+
+| Modus | Beschreibung |
+|---|---|
+| `both` | Bidirektionaler Sync (Standard) |
+| `a2m` | Nur Alexa → MS Todo (One-Way) |
+
+#### `both`
+- Neues Item auf Alexa → wird in MS Todo angelegt
+- Neues Item in MS Todo → wird in Alexa angelegt
+- Item von Alexa gelöscht → wird in MS Todo gelöscht
+- Item aus MS Todo gelöscht → wird von Alexa gelöscht
+
+#### `a2m`
+- Neues Item auf Alexa → wird in MS Todo angelegt
+- Mit `delete_origin: true` → Item wird nach dem Sync aus Alexa gelöscht
+- Löschungen werden nicht propagiert
 
 ---
 
 ## Azure App Registration einrichten
 
 1. Öffne [portal.azure.com](https://portal.azure.com) → **Azure Active Directory** → **App-Registrierungen** → **Neue Registrierung**
-2. Name: `alexa2mstodo`, Kontotyp: **Persönliche Microsoft-Konten (z. B. Skype, Xbox)**
-3. Weiterleitungs-URI: leer lassen (nicht nötig)
-4. Nach dem Erstellen: **Authentifizierung** → **Erweiterte Einstellungen** → **Öffentliche Clientflows erlauben: Ja**
-5. **API-Berechtigungen** → **Berechtigung hinzufügen** → Microsoft Graph → Delegiert → `Tasks.ReadWrite` hinzufügen
-6. Die **Anwendungs-ID (Client-ID)** aus dem Übersichts-Tab kopieren
+2. Name: `alexa2mstodo`, Kontotyp: **Persönliche Microsoft-Konten**
+3. Nach dem Erstellen: **Authentifizierung** → **Erweiterte Einstellungen** → **Öffentliche Clientflows erlauben: Ja**
+4. **API-Berechtigungen** → Microsoft Graph → Delegiert → `Tasks.ReadWrite`
+5. Die **Anwendungs-ID (Client-ID)** kopieren
+
+---
+
+## Amazon Cookie einrichten
+
+Die Authentifizierung bei Amazon erfolgt über einen Session-Cookie. Dieser kann auf zwei Wegen beschafft werden:
+
+### Option 1: Browser-Proxy (empfohlen)
+
+```bash
+python3 src/amazon_login.py --config config/config.json
+```
+
+Browser öffnen: `http://localhost:8765/` → bei Amazon einloggen → Cookie wird automatisch in `alexa_cookie.json` gespeichert.
+
+### Option 2: Manuell aus ioBroker / FHEM
+
+Cookie und CSRF-Token aus der jeweiligen Alexa-Integration entnehmen und in `config/alexa_cookie.json` eintragen:
+
+```json
+{
+    "cookie": "session-id=...; csrf=12345678",
+    "csrf-token": "12345678"
+}
+```
 
 ---
 
 ## Konfiguration
 
-Datei `/data/alexa2mstodo/config.json` anlegen:
+`config/config.json`:
 
 ```json
 {
     "amazon_url": "amazon.de",
-    "amazon_username": "deine@email.de",
-    "amazon_password": "dein-amazon-passwort",
-    "amazon_mfa_secret": "TOTP_SECRET_FALLS_2FA_AKTIV",
+    "alexa_list_name": "shop",
+    "alexa_cookie_file": "alexa_cookie.json",
 
     "ms_client_id": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
     "ms_tenant_id": "consumers",
-    "ms_list_name": "Einkaufsliste"
+    "ms_list_name": "Einkaufsliste",
+
+    "sync_direction": "both",
+    "delete_origin": false,
+    "sync_interval": 30
 }
 ```
 
 | Key | Beschreibung |
 |---|---|
 | `amazon_url` | `amazon.de`, `amazon.com`, `amazon.es` … |
-| `amazon_username` | Amazon-Account-E-Mail |
-| `amazon_password` | Amazon-Passwort |
-| `amazon_mfa_secret` | TOTP-Geheimnis für 2FA (leer lassen wenn keine 2FA) |
-| `ms_client_id` | Client-ID der Azure App Registration (s. o.) |
-| `ms_tenant_id` | `consumers` für persönliche Konten, sonst Tenant-GUID |
-| `ms_list_name` | Name der To-Do-Liste (wird erstellt falls nicht vorhanden) |
+| `alexa_list_name` | Name der Alexa-Liste (z. B. `shop`) |
+| `alexa_cookie_file` | Pfad zur Cookie-Datei (relativ zur config.json) |
+| `ms_client_id` | Client-ID der Azure App Registration |
+| `ms_tenant_id` | `consumers` für persönliche Konten |
+| `ms_list_name` | Name der MS-Todo-Liste |
+| `sync_direction` | `both` oder `a2m` |
+| `delete_origin` | `true` → nach Sync aus Quelle löschen (nur bei `a2m`) |
+| `sync_interval` | Sekunden zwischen Sync-Zyklen |
 
 ---
 
-## Erster Start (Authentifizierung)
+## Erster Start (MS Todo Authentifizierung)
 
 Beim allerersten Start muss die MS-Anmeldung einmalig interaktiv durchgeführt werden:
 
@@ -66,7 +107,7 @@ Beim allerersten Start muss die MS-Anmeldung einmalig interaktiv durchgeführt w
 docker compose run --rm alexa2mstodo
 ```
 
-Es erscheint ein Device-Code-Link, z. B.:
+Es erscheint ein Device-Code-Link:
 
 ```
 To sign in, use a web browser to open the page https://microsoft.com/devicelogin
@@ -82,13 +123,14 @@ Browser öffnen, Code eingeben, mit Microsoft-Konto anmelden. Der Refresh-Token 
 ```yaml
 services:
   alexa2mstodo:
-    build: .
+    image: ghcr.io/tompsg-git/alexa2mstodo:latest
     volumes:
-      - /data/alexa2mstodo:/config
+      - ./config:/config
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Europe/Berlin
       - SYNC_INTERVAL=30
+      - SYNC_DIRECTION=both
     restart: unless-stopped
 ```
 
@@ -97,17 +139,36 @@ docker compose up -d
 docker compose logs -f
 ```
 
-`restart: unless-stopped` ist wichtig — falls Amazon die Session invalidiert, crasht der Container und startet neu.
-
 ---
 
 ## Umgebungsvariablen
+
+ENV-Variablen haben Vorrang vor `config.json`.
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
 | `CONFIG_PATH` | `/config/config.json` | Pfad zur Config-Datei |
 | `SYNC_INTERVAL` | `30` | Sekunden zwischen Sync-Zyklen |
-| `LOG_LEVEL` | `INFO` | Python-Log-Level (`DEBUG`, `INFO`, `WARNING`) |
+| `SYNC_DIRECTION` | `both` | `both` oder `a2m` |
+| `DELETE_ORIGIN` | `false` | `true` aktiviert delete_origin |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` |
+
+---
+
+## Backup & Restore
+
+```bash
+# Backup Alexa-Liste
+python3 src/backup.py --config config/config.json --dir config/backup
+
+# Backup MS-Todo-Liste
+python3 src/backup.py --config config/config.json --dir config/backup
+
+# Restore
+python3 src/restore.py --config config/config.json --dir config/backup
+```
+
+Beide Skripte zeigen interaktiv die verfügbaren Listen zur Auswahl an.
 
 ---
 
@@ -115,7 +176,15 @@ docker compose logs -f
 
 ```bash
 pip install -r requirements.txt
-CONFIG_PATH=./config.json python server.py
+CONFIG_PATH=./config/config.json python3 src/server.py
+```
+
+---
+
+## Tests
+
+```bash
+python3 src/test_synchronizer.py
 ```
 
 ---
@@ -123,6 +192,7 @@ CONFIG_PATH=./config.json python server.py
 ## Credits
 
 - [alexiri/alexa2anylist](https://github.com/alexiri/alexa2anylist) — Ursprungsidee und Architektur
+- [ioBroker alexa-remote2](https://github.com/Apollon77/ioBroker.alexa2) — Alexa V2 API Endpunkte
 - [Microsoft MSAL für Python](https://github.com/AzureAD/microsoft-authentication-library-for-python)
 - [Microsoft Graph To Do API](https://learn.microsoft.com/de-de/graph/api/resources/todo-overview)
 
