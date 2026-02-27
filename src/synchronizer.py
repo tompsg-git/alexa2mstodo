@@ -188,7 +188,7 @@ class Synchronizer:
             else:
                 log.info("New item on Alexa '%s' → adding to MS Todo", alexa_item.value)
                 try:
-                    new_todo = self.todo.add_item(alexa_item.value)
+                    new_todo = self.todo.add_item(alexa_item.value.capitalize())
                     new_state.items.append(AnchorItem(
                         alexa_id=alexa_item.id,
                         todo_id=new_todo.id,
@@ -263,7 +263,7 @@ class Synchronizer:
                 # Only on Alexa → add to Todo
                 log.info("Initial: '%s' only in Alexa → adding to Todo", alexa_item.value)
                 try:
-                    new_todo = self.todo.add_item(alexa_item.value)
+                    new_todo = self.todo.add_item(alexa_item.value.capitalize())
                     state.items.append(AnchorItem(
                         alexa_id=alexa_item.id,
                         todo_id=new_todo.id,

@@ -11,12 +11,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/*.py ./
+COPY config.json.example /config/config.json.example
+COPY alexa_cookie.json.example /config/alexa_cookie.json.example
 
 # Config and state are mounted here
 VOLUME ["/config"]
 
 ENV CONFIG_PATH=/config/config.json
-ENV SYNC_INTERVAL=30
+ENV ALEXA_COOKIE_PATH=/config/alexa_cookie.json
+ENV SYNC_INTERVAL=300
 ENV LOG_LEVEL=INFO
 
 CMD ["python", "-u", "server.py"]

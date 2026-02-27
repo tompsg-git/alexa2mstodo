@@ -39,11 +39,15 @@ def load_config(path: str) -> dict:
 
 
 def main():
-    log.info("alexa2mstodo starting")
-    log.info("Config: %s", CONFIG_PATH)
     config = load_config(CONFIG_PATH)
+
+    log.info("=" * 40)
+    log.info("  alexa2mstodo starting")
+    log.info("  Config: %s", CONFIG_PATH)
+    log.info("=" * 40)
     SYNC_INTERVAL = int(config.get("sync_interval", os.environ.get("SYNC_INTERVAL", "30")))
-    log.info("Sync interval: %ds", SYNC_INTERVAL)
+    log.info("  Sync interval  : %ds", SYNC_INTERVAL)
+    log.info("=" * 40)
 
     # Expose config path so mstodo.py can write the refresh token back
     os.environ["CONFIG_PATH"] = CONFIG_PATH
