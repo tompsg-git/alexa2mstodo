@@ -17,6 +17,7 @@ import sys
 import time
 
 from synchronizer import Synchronizer
+from synchronizer_a2m import SynchronizerA2M
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/config/config.json")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -41,18 +42,34 @@ def load_config(path: str) -> dict:
 def main():
     config = load_config(CONFIG_PATH)
 
+    SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", config.get("sync_interval", 30)))
+    direction = os.environ.get("SYNC_DIRECTION", config.get("sync_direction", "both"))
+    delete_origin = os.environ.get("DELETE_ORIGIN", str(config.get("delete_origin", False))).lower() == "true"
+
+    # Zurückschreiben damit Synchronizer die Werte aus config liest
+    config["sync_interval"] = SYNC_INTERVAL
+    config["sync_direction"] = direction
+    config["delete_origin"] = delete_origin
+
     log.info("=" * 40)
     log.info("  alexa2mstodo starting")
-    log.info("  Config: %s", CONFIG_PATH)
-    log.info("=" * 40)
-    SYNC_INTERVAL = int(config.get("sync_interval", os.environ.get("SYNC_INTERVAL", "30")))
+    log.info("  Config         : %s", CONFIG_PATH)
+    log.info("  Sync direction : %s", direction)
+    log.info("  Delete origin  : %s", delete_origin)
     log.info("  Sync interval  : %ds", SYNC_INTERVAL)
     log.info("=" * 40)
 
     # Expose config path so mstodo.py can write the refresh token back
     os.environ["CONFIG_PATH"] = CONFIG_PATH
 
-    sync = Synchronizer(config, state_path=os.path.join(os.path.dirname(CONFIG_PATH), "state.json"))
+    if direction == "a2m":
+        SyncClass = SynchronizerA2M
+    elif direction == "both":
+        SyncClass = Synchronizer
+    else:
+        log.error("Ungültige sync_direction '%s' — erlaubt: both, a2m", direction)
+        sys.exit(1)
+    sync = SyncClass(config, state_path=os.path.join(os.path.dirname(CONFIG_PATH), "state.json"))
 
     # Connect (triggers MS Todo device-code auth on first run)
     try:

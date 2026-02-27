@@ -117,6 +117,7 @@ class AlexaAPI:
         lists = data.get("listInfoList", [])
 
         # Immer alle Listen ausgeben
+        log.info("=" * 40)
         log.info("Alexa: verfügbare Listen:")
         for lst in lists:
             name = lst.get("listName") or lst.get("listType") or "?"

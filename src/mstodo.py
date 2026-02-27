@@ -156,10 +156,17 @@ class MSTodo:
             return self._list_id
 
         data = self._get("/me/todo/lists")
+
+        # Immer alle Listen ausgeben
+        log.info("=" * 40)
+        log.info("ToDo: verfügbare Listen:")
+        for lst in data.get("value", []):
+            log.info("  MS Todo Liste: '%s'", lst["displayName"])
+
         for lst in data.get("value", []):
             if lst["displayName"].lower() == self.list_name.lower():
                 self._list_id = lst["id"]
-                log.info("Found MS To Do list '%s' (id=%s)", self.list_name, self._list_id)
+                log.info("MS Todo: using list '%s' (id=%s)", self.list_name, self._list_id)
                 return self._list_id
 
         # Create the list

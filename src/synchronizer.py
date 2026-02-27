@@ -41,6 +41,7 @@ class AnchorItem:
 @dataclass
 class SyncState:
     items: list[AnchorItem] = field(default_factory=list)
+    sync_direction: str = "both"
 
     def find_by_alexa_id(self, aid: str) -> Optional[AnchorItem]:
         return next((i for i in self.items if i.alexa_id == aid), None)
@@ -52,14 +53,18 @@ class SyncState:
         return next((i for i in self.items if i.value.lower() == value.lower()), None)
 
     def to_dict(self) -> dict:
-        return {"items": [
-            {"alexa_id": i.alexa_id, "todo_id": i.todo_id, "value": i.value}
-            for i in self.items
-        ]}
+        return {
+            "sync_direction": self.sync_direction,
+            "items": [
+                {"alexa_id": i.alexa_id, "todo_id": i.todo_id, "value": i.value}
+                for i in self.items
+            ]
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "SyncState":
         s = cls()
+        s.sync_direction = data.get("sync_direction", "both")
         for item in data.get("items", []):
             s.items.append(AnchorItem(
                 alexa_id=item.get("alexa_id"),
@@ -81,15 +86,25 @@ class Synchronizer:
     # ------------------------------------------------------------------
 
     def _load_state(self) -> SyncState:
+        current_direction = self.config.get("sync_direction", "both")
         if os.path.exists(self.state_path):
             try:
                 with open(self.state_path) as f:
-                    return SyncState.from_dict(json.load(f))
+                    state = SyncState.from_dict(json.load(f))
+                if state.sync_direction != current_direction:
+                    log.warning(
+                        "sync_direction geändert (%s → %s) — state.json wird zurückgesetzt",
+                        state.sync_direction, current_direction
+                    )
+                    os.remove(self.state_path)
+                    return SyncState(sync_direction=current_direction)
+                return state
             except (json.JSONDecodeError, KeyError) as e:
                 log.warning("Could not load state (%s), starting fresh.", e)
-        return SyncState()
+        return SyncState(sync_direction=current_direction)
 
     def _save_state(self, state: SyncState):
+        state.sync_direction = self.config.get("sync_direction", "both")
         os.makedirs(os.path.dirname(self.state_path) or ".", exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump(state.to_dict(), f, indent=2)
@@ -188,7 +203,7 @@ class Synchronizer:
             else:
                 log.info("New item on Alexa '%s' → adding to MS Todo", alexa_item.value)
                 try:
-                    new_todo = self.todo.add_item(alexa_item.value.capitalize())
+                    new_todo = self.todo.add_item(alexa_item.value)
                     new_state.items.append(AnchorItem(
                         alexa_id=alexa_item.id,
                         todo_id=new_todo.id,
@@ -263,7 +278,7 @@ class Synchronizer:
                 # Only on Alexa → add to Todo
                 log.info("Initial: '%s' only in Alexa → adding to Todo", alexa_item.value)
                 try:
-                    new_todo = self.todo.add_item(alexa_item.value.capitalize())
+                    new_todo = self.todo.add_item(alexa_item.value)
                     state.items.append(AnchorItem(
                         alexa_id=alexa_item.id,
                         todo_id=new_todo.id,
