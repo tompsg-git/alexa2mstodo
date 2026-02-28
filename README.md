@@ -1,4 +1,4 @@
-# alexa2mstodo
+# alexa2mstodo (Still under construction and testing)
 
 Sync zwischen der **Alexa Einkaufsliste** und **Microsoft To Do** — ohne Selenium, ohne Browser-Automatisierung.
 
