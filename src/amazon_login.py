@@ -30,12 +30,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-logging.basicConfig(
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    level=logging.INFO,
-    stream=sys.stdout,
-)
-log = logging.getLogger("amazon_login")
+log = logging.getLogger(__name__)
 
 LOGIN_DONE = threading.Event()
 CAPTURED = {}
@@ -305,20 +300,24 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def _save_cookies(self):
         config_path = os.environ.get("CONFIG_PATH", "/config/config.json")
-        config_dir = os.path.dirname(os.path.abspath(config_path))
 
         with open(config_path) as f:
             config = json.load(f)
 
-        # cookie_file = os.path.join(config_dir, config.get("alexa_cookie_file", "alexa_cookie.json"))
-        cookie_filename = os.path.basename(config.get("alexa_cookie_file", "alexa_cookie.json"))
-        cookie_file = os.path.join(config_dir, cookie_filename)
+        config_dir = os.path.dirname(os.path.abspath(config_path))
+        cookie_file_setting = config.get("alexa_cookie_file", "alexa_cookie.json")
+        cookie_file = cookie_file_setting if os.path.isabs(cookie_file_setting) else os.path.join(config_dir, os.path.basename(cookie_file_setting))
         cookies = CAPTURED.get("cookies", {})
+
+        # ap-fid löschen, falls vorhanden
+        cookies.pop("ap-fid", None)
+
         cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-        csrf = cookies.get("csrf", cookies.get("csrf-token", ""))
+        # csrf = cookies.get("csrf", cookies.get("csrf-token", ""))
 
         with open(cookie_file, "w") as f:
-            json.dump({"cookie": cookie_string, "csrf-token": csrf}, f, indent=2)
+            json.dump({"localCookie": cookie_string}, f, indent=2)
+            # json.dump({"localCookie": cookie_string, "csrf-token": csrf}, f, indent=2)
 
         log.info("✓ Cookies gespeichert: %s (%d Cookies)", cookie_file, len(cookies))
 
@@ -349,6 +348,12 @@ def run_proxy(port: int):
 
 if __name__ == "__main__":
     import argparse
+    logging.basicConfig(
+        format="%(asctime)s  %(levelname)-8s  %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+        stream=sys.stdout,
+    )
 
     parser = argparse.ArgumentParser(description="Amazon Login via Browser-Proxy")
     parser.add_argument("--config", default=os.environ.get("CONFIG_PATH", "/config/config.json"))

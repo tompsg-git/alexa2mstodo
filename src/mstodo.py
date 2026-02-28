@@ -2,13 +2,13 @@
 Microsoft To Do integration via Microsoft Graph API.
 
 Authentication uses MSAL with a Device Code Flow for the first login,
-then stores the refresh token in config.json for subsequent runs.
+then stores the refresh token in ms_token.json for subsequent runs.
 
 Required config keys:
-    ms_client_id     - Azure App Registration client ID (public client)
-    ms_tenant_id     - "consumers" for personal accounts, or your tenant GUID
-    ms_list_name     - Name of the To Do list to sync (will be created if absent)
-    ms_refresh_token - (auto-written after first login)
+    ms_client_id   - Azure App Registration client ID (public client)
+    ms_tenant_id   - "consumers" for personal accounts, or your tenant GUID
+    ms_list_name   - Name of the To Do list to sync (will be created if absent)
+    ms_token_file  - Path to token file (default: ms_token.json next to config)
 """
 
 import json
@@ -53,6 +53,11 @@ class MSTodo:
         self._access_token: Optional[str] = None
         self._token_expiry: float = 0.0
 
+        # Token file — separate from config
+        token_file = config.get("ms_token_file", "ms_token.json")
+        config_dir = os.path.dirname(os.path.abspath(config_path))
+        self.token_path = token_file if os.path.isabs(token_file) else os.path.join(config_dir, token_file)
+
         authority = f"https://login.microsoftonline.com/{self.tenant_id}"
         self._app = msal.PublicClientApplication(
             client_id=self.client_id,
@@ -64,21 +69,31 @@ class MSTodo:
     # ------------------------------------------------------------------
 
     def _save_refresh_token(self, refresh_token: str):
-        self.config["ms_refresh_token"] = refresh_token
         try:
-            with open(self.config_path, "w") as f:
-                json.dump(self.config, f, indent=4)
-            log.debug("Refresh token saved to %s", self.config_path)
+            with open(self.token_path, "w") as f:
+                json.dump({"ms_refresh_token": refresh_token}, f, indent=4)
+            log.debug("Refresh token saved to %s", self.token_path)
         except OSError as e:
             log.warning("Could not save refresh token: %s", e)
+
+    def _load_refresh_token(self) -> Optional[str]:
+        # 1) separate token file
+        if os.path.exists(self.token_path):
+            try:
+                with open(self.token_path) as f:
+                    return json.load(f).get("ms_refresh_token")
+            except (json.JSONDecodeError, OSError):
+                pass
+        # 2) fallback: legacy token in config.json
+        return self.config.get("ms_refresh_token")
 
     def _acquire_token(self) -> str:
         """Return a valid access token, refreshing or doing device-code flow as needed."""
         if self._access_token and time.time() < self._token_expiry - 60:
             return self._access_token
 
-        # 1) Try refresh token from config
-        refresh_token = self.config.get("ms_refresh_token")
+        # 1) Try refresh token from token file (or legacy config)
+        refresh_token = self._load_refresh_token()
         if refresh_token:
             result = self._app.acquire_token_by_refresh_token(refresh_token, scopes=SCOPES)
             if "access_token" in result:
@@ -157,11 +172,9 @@ class MSTodo:
 
         data = self._get("/me/todo/lists")
 
-        # Immer alle Listen ausgeben
-        log.info("=" * 40)
-        log.info("ToDo: verfügbare Listen:")
+        log.info("MS Todo: verfügbare Listen:")
         for lst in data.get("value", []):
-            log.info("  MS Todo Liste: '%s'", lst["displayName"])
+            log.info("  - '%s'", lst["displayName"])
 
         for lst in data.get("value", []):
             if lst["displayName"].lower() == self.list_name.lower():

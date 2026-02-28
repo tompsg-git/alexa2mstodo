@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alexa2mstodo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #e0e0f0; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #12121a; } ::-webkit-scrollbar-thumb { background: #1e1e2e; border-radius: 3px; }
+    input:focus { outline: 1px solid #00d4aa44; }
+    .item-row:hover .item-actions { opacity: 1 !important; }
+    .item-row:hover { background: rgba(0,180,216,0.05) !important; }
+    .tab-btn:hover { color: #e0e0f0 !important; }
+    .btn:hover { background: rgba(255,255,255,0.05); }
+    .btn-del:hover { background: rgba(255,68,102,0.1) !important; border-color: #ff4466 !important; }
+    .spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const C = {
+  bg: "#0a0a0f", surface: "#12121a", border: "#1e1e2e",
+  accent: "#00d4aa", accentRed: "#ff4466", accentAmber: "#ffaa00",
+  text: "#e0e0f0", dim: "#606080", muted: "#404060",
+  alexa: "#00b4d8", todo: "#7c5cbf",
+};
+
+const api = {
+  get: (url) => fetch(url).then(r => r.json()),
+  post: (url, body) => fetch(url, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(r => r.json()),
+  del: (url) => fetch(url, { method: "DELETE" }).then(r => r.json()),
+};
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+function StatusDot({ active }) {
+  return <span style={{
+    display: "inline-block", width: 7, height: 7, borderRadius: "50%",
+    background: active ? C.accent : C.accentRed,
+    boxShadow: `0 0 6px ${active ? C.accent : C.accentRed}`,
+    marginRight: 6,
+  }} />;
+}
+
+function Badge({ color, children }) {
+  return <span style={{
+    background: `${color}22`, color, border: `1px solid ${color}44`,
+    padding: "2px 8px", borderRadius: 3, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
+  }}>{children}</span>;
+}
+
+function Btn({ onClick, color = C.accent, children, style = {} }) {
+  return <button className="btn" onClick={onClick} style={{
+    background: "none", border: `1px solid ${color}44`, color,
+    padding: "5px 12px", borderRadius: 4, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 11, letterSpacing: "0.05em", transition: "all 0.15s", ...style,
+  }}>{children}</button>;
+}
+
+function BtnPrimary({ onClick, color = C.accent, children, style = {} }) {
+  return <button onClick={onClick} style={{
+    background: color, border: "none", color: "#000",
+    padding: "8px 18px", borderRadius: 4, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em",
+    transition: "opacity 0.15s", ...style,
+  }}>{children}</button>;
+}
+
+function Input({ value, onChange, onKeyDown, placeholder, style = {} }) {
+  return <input value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} style={{
+    background: C.bg, border: `1px solid ${C.border}`, color: C.text,
+    padding: "8px 12px", borderRadius: 4, fontFamily: "inherit", fontSize: 13,
+    width: "100%", ...style,
+  }} />;
+}
+
+function Select({ value, onChange, children, style = {} }) {
+  return <select value={value} onChange={onChange} style={{
+    background: C.bg, border: `1px solid ${C.border}`, color: C.text,
+    padding: "8px 12px", borderRadius: 4, fontFamily: "inherit", fontSize: 13,
+    width: "100%", ...style,
+  }}>{children}</select>;
+}
+
+function Panel({ title, color, badge, children }) {
+  return <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", background: `${color}0d` }}>
+      <span style={{ color, fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase" }}>{title}</span>
+      <div style={{ display: "flex", gap: 8 }}>{badge}</div>
+    </div>
+    {children}
+  </div>;
+}
+
+// ---------------------------------------------------------------------------
+// Lists Tab
+// ---------------------------------------------------------------------------
+
+function ItemList({ items, onDelete, onAdd, color, loading }) {
+  const [newVal, setNewVal] = useState("");
+
+  const handleAdd = () => {
+    if (newVal.trim()) { onAdd(newVal.trim()); setNewVal(""); }
+  };
+
+  return <div>
+    <div style={{ minHeight: 200 }}>
+      {loading && <div style={{ padding: "40px 16px", textAlign: "center", color: C.muted }}>laden...</div>}
+      {!loading && items.length === 0 && <div style={{ padding: "40px 16px", textAlign: "center", color: C.muted }}>— leer —</div>}
+      {!loading && items.map(item => (
+        <div key={item.id} className="item-row" style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}`, transition: "background 0.1s" }}>
+          <span style={{ color: C.muted, fontSize: 10 }}>▸</span>
+          <span style={{ flex: 1 }}>{item.value}</span>
+          <div className="item-actions" style={{ opacity: 0, transition: "opacity 0.15s", display: "flex", gap: 6 }}>
+            <button className="btn btn-del" onClick={() => onDelete(item.id)} style={{
+              background: "none", border: `1px solid ${C.accentRed}44`, color: C.accentRed,
+              padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit", fontSize: 11, transition: "all 0.15s",
+            }}>del</button>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div style={{ padding: "10px 16px", display: "flex", gap: 8 }}>
+      <Input value={newVal} onChange={e => setNewVal(e.target.value)} placeholder="Item hinzufügen..." onKeyDown={e => e.key === "Enter" && handleAdd()} />
+      <BtnPrimary onClick={handleAdd} color={color} style={{ whiteSpace: "nowrap" }}>+ add</BtnPrimary>
+    </div>
+  </div>;
+}
+
+function ListsTab() {
+  const [alexaItems, setAlexaItems] = useState([]);
+  const [todoItems, setTodoItems] = useState([]);
+  const [loadingAlexa, setLoadingAlexa] = useState(true);
+  const [loadingTodo, setLoadingTodo] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  const loadAlexa = useCallback(() => {
+    setLoadingAlexa(true);
+    api.get("/api/alexa/items").then(d => { setAlexaItems(Array.isArray(d) ? d : []); setLoadingAlexa(false); }).catch(() => setLoadingAlexa(false));
+  }, []);
+
+  const loadTodo = useCallback(() => {
+    setLoadingTodo(true);
+    api.get("/api/todo/items").then(d => { setTodoItems(Array.isArray(d) ? d : []); setLoadingTodo(false); }).catch(() => setLoadingTodo(false));
+  }, []);
+
+  const refresh = useCallback(() => {
+    loadAlexa(); loadTodo();
+    setLastRefresh(new Date().toLocaleTimeString());
+  }, [loadAlexa, loadTodo]);
+
+  useEffect(() => {
+    api.get("/api/config").then(cfg => {
+      const interval = (cfg.sync_interval || 30) * 1000;
+      let lastMtime = null;
+      const check = () => {
+        api.get("/api/state/mtime").then(d => {
+          if (d.mtime !== lastMtime) {
+            lastMtime = d.mtime;
+            refresh();
+          }
+        });
+      };
+      check();
+      const t = setInterval(check, interval);
+      return () => clearInterval(t);
+    });
+  }, []);
+
+  const alexaDelete = (id) => api.del(`/api/alexa/items/${id}`).then(loadAlexa);
+  const alexaAdd = (value) => api.post("/api/alexa/items", { value }).then(loadAlexa);
+  const todoDelete = (id) => api.del(`/api/todo/items/${id}`).then(loadTodo);
+  const todoAdd = (value) => api.post("/api/todo/items", { value }).then(loadTodo);
+
+  return <div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ color: C.dim, fontSize: 12 }}>
+        {lastRefresh ? <>Aktualisiert: <span style={{ color: C.accent }}>{lastRefresh}</span></> : <span style={{ color: C.muted }}>laden...</span>}
+      </div>
+      <span style={{ color: C.muted, fontSize: 11 }}>auto-refresh</span>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <Panel title="⬡ Alexa" color={C.alexa} badge={<><Badge color={C.alexa}>{alexaItems.length} items</Badge></>}>
+        <ItemList items={alexaItems} onDelete={alexaDelete} onAdd={alexaAdd} color={C.alexa} loading={loadingAlexa} />
+      </Panel>
+      <Panel title="☑ MS Todo" color={C.todo} badge={<><Badge color={C.todo}>{todoItems.length} items</Badge></>}>
+        <ItemList items={todoItems} onDelete={todoDelete} onAdd={todoAdd} color={C.todo} loading={loadingTodo} />
+      </Panel>
+    </div>
+  </div>;
+}
+
+// ---------------------------------------------------------------------------
+// Config Tab
+// ---------------------------------------------------------------------------
+
+function ConfigTab() {
+  const [config, setConfig] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { api.get("/api/config").then(setConfig); }, []);
+
+  const save = () => {
+    api.post("/api/config", config).then(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); });
+  };
+
+  const row = (label, content) => (
+    <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
+      <span style={{ color: C.dim, fontSize: 12, letterSpacing: "0.05em" }}>{label}</span>
+      {content}
+    </div>
+  );
+
+  const section = (label) => (
+    <div style={{ color: C.dim, fontSize: 11, padding: "20px 0 12px", letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</div>
+  );
+
+  if (!config) return <div style={{ color: C.muted, padding: 40 }}>laden...</div>;
+
+  return <div style={{ maxWidth: 800 }}>
+    <Panel title="⚙ Konfiguration" color={C.accentAmber}>
+      <div style={{ padding: "8px 24px 24px" }}>
+        {section("Listen")}
+        {row("alexa_list_name", <Input value={config.alexa_list_name || ""} onChange={e => setConfig({...config, alexa_list_name: e.target.value})} />)}
+        {row("ms_list_name", <Input value={config.ms_list_name || ""} onChange={e => setConfig({...config, ms_list_name: e.target.value})} />)}
+
+        {section("Sync")}
+        {row("sync_direction", <Select value={config.sync_direction || "both"} onChange={e => setConfig({...config, sync_direction: e.target.value})}>
+          <option value="both">both — bidirektional</option>
+          <option value="a2m">a2m — nur Alexa → Todo</option>
+        </Select>)}
+        {row("delete_origin", <Select value={config.delete_origin ? "true" : "false"} onChange={e => setConfig({...config, delete_origin: e.target.value === "true"})}>
+          <option value="false">false</option>
+          <option value="true">true</option>
+        </Select>)}
+        {row("sync_interval (s)", <Input type="number" value={config.sync_interval || 30} onChange={e => setConfig({...config, sync_interval: parseInt(e.target.value)})} />)}
+
+        {section("Webserver")}
+        {row("webserver", <Select value={config.webserver ? "true" : "false"} onChange={e => setConfig({...config, webserver: e.target.value === "true"})}>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </Select>)}
+
+
+        <div style={{ paddingTop: 24 }}>
+          <BtnPrimary onClick={save}>{saved ? "✓ gespeichert" : "speichern"}</BtnPrimary>
+        </div>
+      </div>
+    </Panel>
+  </div>;
+}
+
+// ---------------------------------------------------------------------------
+// Login Tab
+// ---------------------------------------------------------------------------
+
+function LoginTab() {
+  const [amazonStatus, setAmazonStatus] = useState({ connected: false, proxy_running: false });
+  const [msStatus, setMsStatus] = useState({ connected: false });
+
+  const loadStatus = () => {
+    api.get("/api/login/amazon/status").then(d => { if (d && !d.error) setAmazonStatus(d); }).catch(() => {});
+    api.get("/api/login/microsoft/status").then(d => { if (d && !d.error) setMsStatus(d); }).catch(() => {});
+  };
+
+  useEffect(() => { loadStatus(); const t = setInterval(loadStatus, 60000); return () => clearInterval(t); }, []);
+
+  const startProxy = () => api.post("/api/login/amazon/start", {}).then(loadStatus);
+  const stopProxy = () => api.post("/api/login/amazon/stop", {}).then(loadStatus);
+
+  const card = (children) => (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 24, maxWidth: 520 }}>
+      {children}
+    </div>
+  );
+
+  const cardTitle = (label, connected) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "0.05em" }}>{label}</span>
+      <Badge color={connected ? C.accent : C.accentRed}>
+        <StatusDot active={connected} />{connected ? "verbunden" : "getrennt"}
+      </Badge>
+    </div>
+  );
+
+  return <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    {card(<>
+      {cardTitle("⬡ Amazon Login", amazonStatus.connected)}
+      <p style={{ color: C.dim, fontSize: 12, lineHeight: 1.7, marginBottom: 20 }}>
+        Authentifizierung via Browser-Proxy. Ein lokaler Server fängt den Amazon Session-Cookie ab.
+      </p>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <BtnPrimary onClick={startProxy} color={C.alexa}>▶ Proxy starten</BtnPrimary>
+        {amazonStatus.proxy_running && (
+          <span style={{ color: C.accentAmber, fontSize: 12 }}>
+            Browser öffnen: <a href="http://localhost:8765" target="_blank" style={{ color: C.accentAmber }}>localhost:8765</a>
+          </span>
+        )}
+      </div>
+      {amazonStatus.connected && (
+        <div style={{ marginTop: 16, padding: "10px 14px", background: `${C.accent}11`, border: `1px solid ${C.accent}22`, borderRadius: 4 }}>
+          <div style={{ color: C.dim, fontSize: 11 }}>Cookie-Datei</div>
+          <div style={{ color: C.accent, fontSize: 12, marginTop: 2 }}>alexa_cookie.json ✓</div>
+        </div>
+      )}
+    </>)}
+
+    {card(<>
+      {cardTitle("☑ Microsoft Login", msStatus.connected)}
+      <p style={{ color: C.dim, fontSize: 12, lineHeight: 1.7, marginBottom: 20 }}>
+        Device Code Flow via Microsoft Identity. Einmalige Anmeldung — Refresh Token wird in config.json gespeichert.
+      </p>
+      <BtnPrimary onClick={() => api.post("/api/login/microsoft/start", {}).then(loadStatus)} color={C.todo}>▶ anmelden</BtnPrimary>
+      {msStatus.connected && <div style={{ marginTop: 12, padding: "10px 14px", background: `${C.todo}11`, border: `1px solid ${C.todo}22`, borderRadius: 4 }}>
+        <div style={{ color: C.dim, fontSize: 11 }}>Refresh Token gespeichert ✓</div>
+      </div>}
+      {msStatus.user_code && <div style={{ marginTop: 12, padding: "14px", background: `${C.todo}11`, border: `1px solid ${C.todo}44`, borderRadius: 4 }}>
+        <div style={{ color: C.dim, fontSize: 11, marginBottom: 8 }}>Browser öffnen und Code eingeben:</div>
+        <a href={msStatus.verification_uri} target="_blank" style={{ color: C.todo, fontSize: 12 }}>{msStatus.verification_uri}</a>
+        <div style={{ marginTop: 12, fontSize: 22, fontWeight: 700, letterSpacing: "0.15em", color: C.text }}>{msStatus.user_code}</div>
+      </div>}
+    </>)}
+  </div>;
+}
+
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
+
+function App() {
+  const [tab, setTab] = useState("lists");
+
+  const tabs = [
+    { id: "lists", label: "Listen" },
+    { id: "config", label: "Konfiguration" },
+    { id: "login", label: "Anmeldung" },
+  ];
+
+  return <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>
+    {/* Nav */}
+    <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.05em", color: C.accent }}>
+        alexa<span style={{ color: C.dim }}>2</span>mstodo
+      </div>
+      <div style={{ fontSize: 11, color: C.dim }}>
+        <StatusDot active={true} />verbunden
+      </div>
+    </div>
+
+    {/* Tabs */}
+    <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "0 24px", display: "flex" }}>
+      {tabs.map(t => (
+        <button key={t.id} className="tab-btn" onClick={() => setTab(t.id)} style={{
+          padding: "10px 20px", cursor: "pointer", background: "none", border: "none",
+          borderBottom: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+          color: tab === t.id ? C.accent : C.dim,
+          fontFamily: "inherit", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase",
+          transition: "all 0.15s",
+        }}>{t.label}</button>
+      ))}
+    </div>
+
+    {/* Content */}
+    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", paddingBottom: 60 }}>
+      {tab === "lists" && <ListsTab />}
+      {tab === "config" && <ConfigTab />}
+      {tab === "login" && <LoginTab />}
+    </div>
+
+    {/* Status Bar */}
+    <div style={{ background: C.surface, borderTop: `1px solid ${C.border}`, padding: "8px 24px", display: "flex", gap: 24, fontSize: 11, color: C.dim, position: "fixed", bottom: 0, left: 0, right: 0 }}>
+      <span>alexa2mstodo</span>
+      <span style={{ marginLeft: "auto", color: C.muted }}>v0.1</span>
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 
 from synchronizer import Synchronizer
@@ -61,6 +62,20 @@ def main():
 
     # Expose config path so mstodo.py can write the refresh token back
     os.environ["CONFIG_PATH"] = CONFIG_PATH
+
+    # Webserver
+    if config.get("webserver", False):
+        port = int(config.get("webserver_port", 8080))
+        try:
+            from webserver import app as web_app
+            t = threading.Thread(
+                target=lambda: web_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False),
+                daemon=True
+            )
+            t.start()
+            log.info("  Web Interface  : http://0.0.0.0:%d", port)
+        except Exception as e:
+            log.warning("Webserver konnte nicht gestartet werden: %s", e)
 
     if direction == "a2m":
         SyncClass = SynchronizerA2M

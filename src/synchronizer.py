@@ -227,8 +227,11 @@ class Synchronizer:
             except Exception as e:
                 log.error("Could not add '%s' to Alexa: %s", todo_item.value, e)
 
-        self._save_state(new_state)
-        log.info("--- Sync done (%d items) ---", len(new_state.items))
+        if new_state.to_dict()["items"] != state.to_dict()["items"]:
+            self._save_state(new_state)
+            log.info("--- Sync done (%d items, state updated) ---", len(new_state.items))
+        else:
+            log.info("--- Sync done (%d items, no changes) ---", len(new_state.items))
 
     # ------------------------------------------------------------------
     # Full initial sync (first run / bootstrap)

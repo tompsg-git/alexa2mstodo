@@ -10,6 +10,7 @@ Endpoints discovered from alexa-remote2 (Apollon77):
 """
 
 import logging
+import os
 from typing import Optional
 
 import pyotp
@@ -46,9 +47,6 @@ class AlexaAPI:
     def __init__(self, config: dict):
         self.config = config
         self.amazon_url = config["amazon_url"].rstrip("/")
-        self.username = config["amazon_username"]
-        self.password = config["amazon_password"]
-        self.mfa_secret = config.get("amazon_mfa_secret", "")
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
         self._logged_in = False
@@ -56,12 +54,17 @@ class AlexaAPI:
 
     def _load_cookies(self):
         import json
-        cookie_file = self.config.get("alexa_cookie_file", "/config/alexa_cookie.json")
+        from utils import resolve_path
+        config_path = os.environ.get("CONFIG_PATH", "/config/config.json")
+        cookie_file = resolve_path(
+            self.config.get("alexa_cookie_file", "alexa_cookie.json"),
+            config_path
+        )
         with open(cookie_file) as f:
             data = json.load(f)
 
         # Cookie-String in Session laden
-        cookie_string = data["cookie"]
+        cookie_string = data.get("localCookie") or data.get("cookie", "")
         for part in cookie_string.split(";"):
             part = part.strip()
             if "=" in part:
@@ -69,10 +72,10 @@ class AlexaAPI:
                 self.session.cookies.set(name.strip(), value.strip())
 
         # CSRF-Token als Header setzen
-        csrf = data.get("csrf-token")
-        if csrf:
-            self.session.headers.update({"csrf": csrf})
-            log.info("Alexa: CSRF token loaded from file")
+        # csrf = data.get("csrf-token")
+        # if csrf:
+            # self.session.headers.update({"csrf": csrf})
+            # log.info("Alexa: CSRF token loaded from file")
 
         self._logged_in = True
         log.info("Alexa: cookies loaded from %s", cookie_file)
@@ -117,12 +120,10 @@ class AlexaAPI:
         lists = data.get("listInfoList", [])
 
         # Immer alle Listen ausgeben
-        log.info("=" * 40)
         log.info("Alexa: verfügbare Listen:")
         for lst in lists:
             name = lst.get("listName") or lst.get("listType") or "?"
-            ltype = lst.get("listType") or "?"
-            log.info("  - '%s' (type=%s)", name, ltype)
+            log.info("  - '%s'", name)
 
         target = self.config.get("alexa_list_name", "shop").lower()
         for lst in lists:

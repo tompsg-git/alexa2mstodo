@@ -2,8 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-config/
 config.json
 alexa_cookie.json
+ms_token.json
 state.json
 .DS_Store
