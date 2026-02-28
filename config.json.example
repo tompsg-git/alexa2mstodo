@@ -1,13 +1,17 @@
 {
     "amazon_url": "amazon.de",
-    "alexa_list_name": "shop",
-    "alexa_cookie_file": "alexa_cookie.json",
+    "alexa_list_name": "Einkaufsliste",
+    "alexa_cookie_file": "/config/alexa_cookie.json",
 
     "ms_client_id": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
     "ms_tenant_id": "consumers",
     "ms_list_name": "Einkaufsliste",
+    "ms_token_file": "/config/ms_token.json",
 
     "sync_direction": "both",
     "delete_origin": false,
-    "sync_interval": 30
+    "sync_interval": 30,
+
+    "webserver": true,
+    "webserver_port": 8080
 }

@@ -1,14 +1,14 @@
 services:
   alexa2mstodo:
-    build: .
-    # oder fertiges Image: image: ghcr.io/dein-name/alexa2mstodo:latest
+    image: ghcr.io/tompsg-git/alexa2mstodo:latest
+    # build: .
     volumes:
-      - /data/alexa2mstodo:/config
+      - ./config:/config
       - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "8080:8080"
     environment:
       - TZ=Europe/Berlin
-      - SYNC_INTERVAL=30
+      - CONFIG_PATH=/config/config.json
       - LOG_LEVEL=INFO
     restart: unless-stopped
-    # Beim allerersten Start interaktiv ausführen (Device Code Auth):
-    # docker compose run --rm alexa2mstodo
