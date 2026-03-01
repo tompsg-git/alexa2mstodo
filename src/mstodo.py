@@ -4,9 +4,9 @@ Date        : 2026-03-01
 Version     : 1.0.0
 Author      : tompsg-git
 Description : Wrapper für die Microsoft Graph To Do API. Authentifizierung
-              via MSAL Device-Code-Flow beim ersten Start, danach über
-              gespeichertes Refresh-Token. Stellt CRUD-Operationen für
-              Aufgabenlisten bereit.
+              über gespeichertes Refresh-Token (ms_token.json). Der initiale
+              Login erfolgt separat über ms_login.py. Stellt CRUD-Operationen
+              für Aufgabenlisten bereit.
 """
 
 import json
@@ -112,27 +112,11 @@ class MSTodo:
                 self._token_expiry = time.time() + result.get("expires_in", 3600)
                 return self._access_token
 
-        # 3) Device code flow (interactive, first run)
-        flow = self._app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            raise RuntimeError(f"Device flow failed: {flow.get('error_description')}")
-
-        print("\n" + "=" * 60)
-        print("Microsoft To Do — First-time authentication required")
-        print("=" * 60)
-        print(flow["message"])
-        print("=" * 60 + "\n")
-
-        result = self._app.acquire_token_by_device_flow(flow)
-        if "access_token" not in result:
-            raise RuntimeError(f"Authentication failed: {result.get('error_description')}")
-
-        self._access_token = result["access_token"]
-        self._token_expiry = time.time() + result.get("expires_in", 3600)
-        if "refresh_token" in result:
-            self._save_refresh_token(result["refresh_token"])
-
-        return self._access_token
+        # 3) Kein Token vorhanden — Authentifizierung über Web-UI erforderlich
+        raise RuntimeError(
+            "Kein gültiges MS-Token vorhanden. "
+            "Bitte über das Web-Interface (MS Todo Login) authentifizieren."
+        )
 
     def _headers(self) -> dict:
         return {

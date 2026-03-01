@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request, send_from_directory
 sys.path.insert(0, os.path.dirname(__file__))
 
 from alexa import AlexaAPI
+from ms_login import run_device_flow as _ms_run_device_flow
 from mstodo import MSTodo
 from utils import load_config as _load_config
 
@@ -295,22 +296,14 @@ ms_login_lock = threading.Lock()
 def _run_ms_device_flow():
     global ms_login_state
     try:
-        todo = get_todo()
-        flow = todo._app.initiate_device_flow(scopes=["Tasks.ReadWrite"])
-        if "user_code" not in flow:
+        config = load_config()
+
+        def on_code(user_code, verification_uri):
             with ms_login_lock:
-                ms_login_state["error"] = flow.get("error_description", "Device flow failed")
-                ms_login_state["running"] = False
-            return
-        with ms_login_lock:
-            ms_login_state["user_code"] = flow["user_code"]
-            ms_login_state["verification_uri"] = flow.get("verification_uri", "https://microsoft.com/devicelogin")
-        result = todo._app.acquire_token_by_device_flow(flow)
-        if "access_token" not in result:
-            with ms_login_lock:
-                ms_login_state["error"] = result.get("error_description", "Auth failed")
-        elif "refresh_token" in result:
-            todo._save_refresh_token(result["refresh_token"])
+                ms_login_state["user_code"] = user_code
+                ms_login_state["verification_uri"] = verification_uri
+
+        _ms_run_device_flow(config, CONFIG_PATH, on_code=on_code)
     except Exception as e:
         with ms_login_lock:
             ms_login_state["error"] = str(e)
