@@ -1,5 +1,10 @@
 """
-alexa2mstodo — gemeinsame Hilfsfunktionen
+Module      : utils
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Gemeinsame Hilfsfunktionen für Konfigurationsladung,
+              Pfadauflösung und interaktive Listenauswahl.
 """
 
 import json
@@ -54,7 +59,7 @@ def choose_alexa_list(config: dict) -> tuple[str, str]:
         sys.exit(1)
     idx = choose_from_list(
         lists,
-        lambda l: l.get("listName") or l.get("listType") or "?",
+        lambda lst: lst.get("listName") or lst.get("listType") or "?",
         "Verfügbare Alexa-Listen:",
     )
     chosen = lists[idx]
@@ -71,6 +76,6 @@ def choose_todo_list(config: dict, config_path: str) -> tuple[str, str]:
     if not lists:
         print("Keine MS-Todo-Listen gefunden.")
         sys.exit(1)
-    idx = choose_from_list(lists, lambda l: l["displayName"], "Verfügbare MS-Todo-Listen:")
+    idx = choose_from_list(lists, lambda lst: lst["displayName"], "Verfügbare MS-Todo-Listen:")
     chosen = lists[idx]
     return chosen["id"], chosen["displayName"]

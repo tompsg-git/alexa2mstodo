@@ -1,14 +1,11 @@
 """
-alexa2mstodo — Web Interface Server
-
-Stellt ein Webinterface bereit und exponiert eine REST API für:
-- Listenanzeige (aus state.json + live Alexa/Todo)
-- Item CRUD (Alexa + MS Todo)
-- Config lesen/schreiben
-- Amazon Login (via amazon_login.py)
-
-Usage:
-    python3 src/webserver.py [--config PATH] [--port PORT]
+Module      : webserver
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Flask-basiertes Webinterface mit REST API für Listenanzeige,
+              Item-CRUD, Konfigurationsverwaltung und OAuth-Login-Flows
+              für Amazon und Microsoft.
 """
 
 import json

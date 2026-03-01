@@ -1,21 +1,18 @@
 """
-Alexa Shopping List wrapper using the internal V2 API.
-
-Endpoints discovered from alexa-remote2 (Apollon77):
-  GET  /api/household                                           → list all lists
-  GET  /alexashoppinglists/api/v2/lists/{listId}/items/fetch   → get items
-  POST /alexashoppinglists/api/v2/lists/{listId}/items         → add item
-  PUT  /alexashoppinglists/api/v2/lists/{listId}/items/{id}    → update item
-  DELETE /alexashoppinglists/api/v2/lists/{listId}/items/{id}  → delete item
+Module      : alexa
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : HTTP-Wrapper für die interne Alexa Shopping List V2 API.
+              Verwaltet Session-Cookies und stellt CRUD-Operationen für
+              Listeneinträge bereit.
 """
 
 import logging
 import os
 from typing import Optional
 
-import pyotp
 import requests
-from bs4 import BeautifulSoup
 
 log = logging.getLogger(__name__)
 
@@ -70,12 +67,6 @@ class AlexaAPI:
             if "=" in part:
                 name, value = part.split("=", 1)
                 self.session.cookies.set(name.strip(), value.strip())
-
-        # CSRF-Token als Header setzen
-        # csrf = data.get("csrf-token")
-        # if csrf:
-            # self.session.headers.update({"csrf": csrf})
-            # log.info("Alexa: CSRF token loaded from file")
 
         self._logged_in = True
         log.info("Alexa: cookies loaded from %s", cookie_file)

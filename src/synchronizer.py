@@ -1,26 +1,17 @@
 """
-Two-way synchroniser between Alexa Shopping List and Microsoft To Do.
-
-Strategy
---------
-State is persisted in a JSON file (default: /config/state.json).
-Each sync cycle:
-
-1.  Load last-known state (the "anchor").
-2.  Fetch current items from Alexa and MS Todo.
-3.  Diff each side against the anchor to find:
-      - new items (to push to the other side)
-      - deleted / completed items (to remove / complete on the other side)
-4.  Apply changes, update anchor, save state.
-
-If we can't reconcile changes (both sides modified the same item), the
-MS Todo version wins (like anylist did in the original).
+Module      : synchronizer
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Bidirektionaler Synchronizer zwischen Alexa Shopping List und
+              Microsoft To Do. Vergleicht den letzten bekannten Anchor-State
+              (state.json) mit dem aktuellen Stand beider Dienste und
+              propagiert Änderungen in beide Richtungen.
 """
 
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -116,7 +107,6 @@ class Synchronizer:
     def connect(self):
         log.info("Connecting to services...")
         self.todo.connect()
-        # Alexa login is lazy, but trigger it early so we fail fast
         self.alexa._ensure_logged_in()
         log.info("Connected to both services.")
 
@@ -131,8 +121,6 @@ class Synchronizer:
         try:
             alexa_items: list[AlexaItem] = self.alexa.get_active_items()
             todo_items: list[MSTodoItem] = self.todo.get_items()
-            # log.info("Alexa items: %s", [i.value for i in alexa_items])
-            # log.info("Todo items: %s", [i.value for i in todo_items])
         except Exception as e:
             log.error("Failed to fetch items: %s", e)
             return
@@ -150,33 +138,35 @@ class Synchronizer:
             todo_gone = anchor.todo_id and anchor.todo_id not in todo_by_id
 
             if alexa_gone and todo_gone:
-                # Both removed → just drop from anchor
                 log.debug("Both removed '%s', dropping anchor", anchor.value)
                 continue
 
             if alexa_gone and not todo_gone:
-                # Removed from Alexa → remove from Todo too
                 log.info("'%s' removed from Alexa → removing from MS Todo", anchor.value)
                 try:
                     self.todo.delete_item(todo_by_id[anchor.todo_id])
                     del todo_by_id[anchor.todo_id]
                 except Exception as e:
                     log.error("Could not delete '%s' from MS Todo: %s", anchor.value, e)
+                    new_state.items.append(anchor)
+                    if anchor.todo_id in todo_by_id:
+                        del todo_by_id[anchor.todo_id]
                 continue
 
             if not alexa_gone and todo_gone:
-                # Removed from Todo → remove from Alexa too
                 log.info("'%s' removed from MS Todo → removing from Alexa", anchor.value)
                 try:
                     self.alexa.delete_item(alexa_by_id[anchor.alexa_id])
                     del alexa_by_id[anchor.alexa_id]
                 except Exception as e:
                     log.error("Could not delete '%s' from Alexa: %s", anchor.value, e)
+                    new_state.items.append(anchor)
+                    if anchor.alexa_id in alexa_by_id:
+                        del alexa_by_id[anchor.alexa_id]
                 continue
 
             # Both still present — keep in anchor
             new_state.items.append(anchor)
-            # Remove from "new items" consideration
             if anchor.alexa_id in alexa_by_id:
                 del alexa_by_id[anchor.alexa_id]
             if anchor.todo_id in todo_by_id:
@@ -186,7 +176,6 @@ class Synchronizer:
         # Remaining Alexa items are NEW (not in anchor) → push to Todo
         # ------------------------------------------------------------------
         for alexa_item in list(alexa_by_id.values()):
-            # Maybe it already exists in Todo by name?
             existing_todo = next(
                 (t for t in todo_by_id.values()
                  if t.value.lower() == alexa_item.value.lower()),
@@ -252,21 +241,18 @@ class Synchronizer:
         todo_by_name = {i.value.lower(): i for i in todo_items}
         alexa_by_name = {i.value.lower(): i for i in alexa_items}
 
-        # Merge both lists
         all_names = set(todo_by_name) | set(alexa_by_name)
         for name in all_names:
             todo_item = todo_by_name.get(name)
             alexa_item = alexa_by_name.get(name)
 
             if todo_item and alexa_item:
-                # Already on both sides
                 state.items.append(AnchorItem(
                     alexa_id=alexa_item.id,
                     todo_id=todo_item.id,
                     value=alexa_item.value,
                 ))
             elif todo_item and not alexa_item:
-                # Only on Todo → add to Alexa
                 log.info("Initial: '%s' only in Todo → adding to Alexa", todo_item.value)
                 try:
                     new_alexa = self.alexa.add_item(todo_item.value)
@@ -278,7 +264,6 @@ class Synchronizer:
                 except Exception as e:
                     log.error("Could not add '%s' to Alexa: %s", todo_item.value, e)
             elif alexa_item and not todo_item:
-                # Only on Alexa → add to Todo
                 log.info("Initial: '%s' only in Alexa → adding to Todo", alexa_item.value)
                 try:
                     new_todo = self.todo.add_item(alexa_item.value)

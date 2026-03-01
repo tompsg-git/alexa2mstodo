@@ -1,14 +1,12 @@
 """
-Microsoft To Do integration via Microsoft Graph API.
-
-Authentication uses MSAL with a Device Code Flow for the first login,
-then stores the refresh token in ms_token.json for subsequent runs.
-
-Required config keys:
-    ms_client_id   - Azure App Registration client ID (public client)
-    ms_tenant_id   - "consumers" for personal accounts, or your tenant GUID
-    ms_list_name   - Name of the To Do list to sync (will be created if absent)
-    ms_token_file  - Path to token file (default: ms_token.json next to config)
+Module      : mstodo
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Wrapper für die Microsoft Graph To Do API. Authentifizierung
+              via MSAL Device-Code-Flow beim ersten Start, danach über
+              gespeichertes Refresh-Token. Stellt CRUD-Operationen für
+              Aufgabenlisten bereit.
 """
 
 import json
@@ -190,7 +188,7 @@ class MSTodo:
         return self._list_id
 
     # ------------------------------------------------------------------
-    # Public API (mirrors anylist.py interface)
+    # Public API
     # ------------------------------------------------------------------
 
     def connect(self):

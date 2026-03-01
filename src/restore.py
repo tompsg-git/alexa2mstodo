@@ -1,13 +1,11 @@
 """
-alexa2mstodo — Restore
-
-Usage:
-    python3 restore.py [--config PATH] [--dir DIR]
-
-1. Auswahl der Backup-Datei
-2. Auswahl: Alexa oder MS Todo
-3. Auswahl der Zielliste
-4. Restore (nur fehlende Items)
+Module      : restore
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Stellt Items aus einem JSON-Backup in einer Alexa- oder
+              MS-Todo-Liste wieder her. Bereits vorhandene Items werden
+              übersprungen.
 """
 
 import glob

@@ -1,13 +1,12 @@
 """
-alexa2mstodo — Amazon Login via Browser-Proxy
-
-Implementiert den gleichen Proxy-Ansatz wie alexa-cookie2:
-- Alle Amazon-URLs werden durch den Proxy geleitet
-- https://www.amazon.de/... → http://localhost:PORT/www.amazon.de/...
-- https://alexa.amazon.de/... → http://localhost:PORT/alexa.amazon.de/...
-
-Usage:
-    python3 amazon_login.py [--config PATH] [--port PORT]
+Module      : amazon_login
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Amazon-Login via lokalem Browser-Proxy. Leitet alle
+              Amazon-URLs transparent durch einen HTTP-Proxy, um
+              Session-Cookies nach erfolgreichem Login zu erfassen
+              und in alexa_cookie.json zu speichern.
 """
 
 import base64
@@ -156,11 +155,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         elif path.startswith("http"):
             target = path
         else:
-            # Unbekannter Pfad
             target = f"https://www.{amazon_page}{path}"
-            #self.send_response(404)
-            #self.end_headers()
-            #return
 
         # Referer zurückschreiben
         headers = {}
@@ -313,11 +308,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         cookies.pop("ap-fid", None)
 
         cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-        # csrf = cookies.get("csrf", cookies.get("csrf-token", ""))
 
         with open(cookie_file, "w") as f:
             json.dump({"localCookie": cookie_string}, f, indent=2)
-            # json.dump({"localCookie": cookie_string, "csrf-token": csrf}, f, indent=2)
 
         log.info("✓ Cookies gespeichert: %s (%d Cookies)", cookie_file, len(cookies))
 
@@ -332,6 +325,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         """.encode())
 
         LOGIN_DONE.set()
+
 
 class NoRedirect(urllib.request.HTTPErrorProcessor):
     def http_response(self, request, response):

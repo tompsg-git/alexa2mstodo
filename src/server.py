@@ -1,13 +1,16 @@
 """
-alexa2mstodo — main entry point.
-
-Reads config.json, authenticates both services, performs an initial sync,
-then polls every SYNC_INTERVAL seconds.
+Module      : server
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Haupteinstiegspunkt. Lädt die Konfiguration, authentifiziert
+              beide Dienste, führt einen initialen Sync durch und startet
+              danach die periodische Synchronisationsschleife.
 
 Environment variables:
-    CONFIG_PATH     Path to config.json  (default: /config/config.json)
-    SYNC_INTERVAL   Seconds between sync cycles  (default: 30)
-    LOG_LEVEL       Python logging level  (default: INFO)
+    CONFIG_PATH     Pfad zu config.json  (Standard: /config/config.json)
+    SYNC_INTERVAL   Sekunden zwischen Sync-Zyklen  (Standard: 30)
+    LOG_LEVEL       Python Logging-Level  (Standard: INFO)
 """
 
 import json

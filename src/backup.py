@@ -1,12 +1,10 @@
 """
-alexa2mstodo — Backup
-
-Usage:
-    python3 backup.py [--config PATH] [--dir DIR]
-
-1. Auswahl: Alexa oder MS Todo
-2. Auswahl der verfügbaren Listen
-3. Backup in JSON-Datei
+Module      : backup
+Date        : 2026-03-01
+Version     : 1.0.0
+Author      : tompsg-git
+Description : Erstellt ein JSON-Backup einer Alexa- oder MS-Todo-Liste.
+              Interaktive Auswahl der Quelle und Zielliste.
 """
 
 import json
