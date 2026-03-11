@@ -145,6 +145,7 @@ function ListsTab() {
   const [loadingAlexa, setLoadingAlexa] = useState(true);
   const [loadingTodo, setLoadingTodo] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [listNames, setListNames] = useState({ alexa: "", todo: "" });
 
   const loadAlexa = useCallback(() => {
     setLoadingAlexa(true);
@@ -163,6 +164,7 @@ function ListsTab() {
 
   useEffect(() => {
     api.get("/api/config").then(cfg => {
+      setListNames({ alexa: cfg.alexa_list_name || "", todo: cfg.ms_list_name || "" });
       const interval = (cfg.sync_interval || 30) * 1000;
       let lastMtime = null;
       const check = () => {
@@ -193,10 +195,10 @@ function ListsTab() {
     </div>
 
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-      <Panel title="⬡ Alexa" color={C.alexa} badge={<><Badge color={C.alexa}>{alexaItems.length} items</Badge></>}>
+      <Panel title={`⬡ Alexa${listNames.alexa ? " — " + listNames.alexa : ""}`} color={C.alexa} badge={<><Badge color={C.alexa}>{alexaItems.length} items</Badge></>}>
         <ItemList items={alexaItems} onDelete={alexaDelete} onAdd={alexaAdd} color={C.alexa} loading={loadingAlexa} />
       </Panel>
-      <Panel title="☑ MS Todo" color={C.todo} badge={<><Badge color={C.todo}>{todoItems.length} items</Badge></>}>
+      <Panel title={`☑ MS Todo${listNames.todo ? " — " + listNames.todo : ""}`} color={C.todo} badge={<><Badge color={C.todo}>{todoItems.length} items</Badge></>}>
         <ItemList items={todoItems} onDelete={todoDelete} onAdd={todoAdd} color={C.todo} loading={loadingTodo} />
       </Panel>
     </div>
