@@ -235,13 +235,22 @@ function ListsTab() {
 
 const EMPTY_PAIR = { alexa: "", ms: "", sync_direction: "both", delete_origin: false, sync_interval: 30 };
 
-function ListPairEditor({ lists, onChange }) {
+function ListPairEditor({ lists, onChange, alexaLists, todoLists }) {
   const add = () => onChange([...lists, { ...EMPTY_PAIR }]);
   const remove = i => onChange(lists.filter((_, j) => j !== i));
   const upd = (i, field, val) => onChange(lists.map((p, j) => j === i ? { ...p, [field]: val } : p));
 
   const colHdr = (label, flex = "1") => (
     <span style={{ color: C.muted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", flex }}>{label}</span>
+  );
+
+  const listSelect = (value, options, onChange) => (
+    <Select value={value} onChange={e => onChange(e.target.value)}>
+      {value && !options.find(o => o.name === value) && (
+        <option value={value}>{value}</option>
+      )}
+      {options.map(o => <option key={o.id || o.name} value={o.name}>{o.name}</option>)}
+    </Select>
   );
 
   return <div>
@@ -251,8 +260,8 @@ function ListPairEditor({ lists, onChange }) {
     </div>
     {lists.map((pair, i) => (
       <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-        <div style={{ flex: 1 }}><Input value={pair.alexa} onChange={e => upd(i, "alexa", e.target.value)} placeholder="Alexa Liste" /></div>
-        <div style={{ flex: 1 }}><Input value={pair.ms} onChange={e => upd(i, "ms", e.target.value)} placeholder="MS Todo Liste" /></div>
+        <div style={{ flex: 1 }}>{listSelect(pair.alexa, alexaLists, v => upd(i, "alexa", v))}</div>
+        <div style={{ flex: 1 }}>{listSelect(pair.ms, todoLists, v => upd(i, "ms", v))}</div>
         <div style={{ flex: "0 0 110px" }}>
           <Select value={pair.sync_direction || "both"} onChange={e => upd(i, "sync_direction", e.target.value)}>
             <option value="both">both</option>
@@ -281,6 +290,20 @@ function ConfigTab() {
   const [config, setConfig] = useState(null);
   const [lists, setLists] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [alexaLists, setAlexaLists] = useState([]);
+  const [todoLists, setTodoLists] = useState([]);
+  const [listsLoading, setListsLoading] = useState(false);
+
+  const loadAvailableLists = () => {
+    setListsLoading(true);
+    Promise.all([
+      api.get("/api/alexa/lists").catch(() => []),
+      api.get("/api/todo/lists").catch(() => []),
+    ]).then(([al, tl]) => {
+      setAlexaLists((al || []).map(l => ({ id: l.id, name: l.name })));
+      setTodoLists((tl || []).map(l => ({ id: l.id, name: l.name })));
+    }).finally(() => setListsLoading(false));
+  };
 
   useEffect(() => {
     api.get("/api/config").then(cfg => {
@@ -303,6 +326,7 @@ function ConfigTab() {
         }]);
       }
     });
+    loadAvailableLists();
   }, []);
 
   const save = () => {
@@ -330,8 +354,13 @@ function ConfigTab() {
   return <div style={{ maxWidth: 900 }}>
     <Panel title="⚙ Konfiguration" color={C.accentAmber}>
       <div style={{ padding: "8px 24px 24px" }}>
-        {section("Listen-Paare")}
-        <ListPairEditor lists={lists} onChange={setLists} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {section("Listen-Paare")}
+          <Btn onClick={loadAvailableLists} color={C.muted} style={{ padding: "3px 10px", fontSize: 11, marginBottom: 0 }} disabled={listsLoading}>
+            {listsLoading ? "..." : "↻ Listen"}
+          </Btn>
+        </div>
+        <ListPairEditor lists={lists} onChange={setLists} alexaLists={alexaLists} todoLists={todoLists} />
 
         {section("Webserver")}
         {row("webserver", <Select value={config.webserver ? "true" : "false"} onChange={e => setConfig({ ...config, webserver: e.target.value === "true" })}>

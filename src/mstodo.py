@@ -148,7 +148,7 @@ class MSTodo:
     # ------------------------------------------------------------------
 
     def _get_list_id(self) -> str:
-        """Return the ID of the configured To Do list, creating it if needed."""
+        """Return the ID of the configured To Do list. Raises RuntimeError if not found."""
         if self._list_id:
             return self._list_id
 
@@ -164,12 +164,10 @@ class MSTodo:
                 log.info("MS Todo: using list '%s' (id=%s)", self.list_name, self._list_id)
                 return self._list_id
 
-        # Create the list
-        log.info("List '%s' not found, creating it.", self.list_name)
-        result = self._post("/me/todo/lists", {"displayName": self.list_name})
-        self._list_id = result["id"]
-        log.info("Created MS To Do list '%s' (id=%s)", self.list_name, self._list_id)
-        return self._list_id
+        raise RuntimeError(
+            f"MS Todo Liste '{self.list_name}' nicht gefunden. "
+            "Bitte die Liste direkt in MS Todo anlegen."
+        )
 
     # ------------------------------------------------------------------
     # Public API
