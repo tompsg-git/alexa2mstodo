@@ -139,50 +139,82 @@ function ItemList({ items, onDelete, onAdd, color, loading }) {
   </div>;
 }
 
-function ListsTab() {
+function PairPanel({ pair, showTitle, refreshKey }) {
   const [alexaItems, setAlexaItems] = useState([]);
   const [todoItems, setTodoItems] = useState([]);
   const [loadingAlexa, setLoadingAlexa] = useState(true);
   const [loadingTodo, setLoadingTodo] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(null);
+
+  const aq = encodeURIComponent(pair.alexa);
+  const mq = encodeURIComponent(pair.ms);
 
   const loadAlexa = useCallback(() => {
     setLoadingAlexa(true);
-    api.get("/api/alexa/items").then(d => { setAlexaItems(Array.isArray(d) ? d : []); setLoadingAlexa(false); }).catch(() => setLoadingAlexa(false));
-  }, []);
+    api.get(`/api/alexa/items?list=${aq}`)
+      .then(d => { setAlexaItems(Array.isArray(d) ? d : []); setLoadingAlexa(false); })
+      .catch(() => setLoadingAlexa(false));
+  }, [aq]);
 
   const loadTodo = useCallback(() => {
     setLoadingTodo(true);
-    api.get("/api/todo/items").then(d => { setTodoItems(Array.isArray(d) ? d : []); setLoadingTodo(false); }).catch(() => setLoadingTodo(false));
-  }, []);
+    api.get(`/api/todo/items?list=${mq}`)
+      .then(d => { setTodoItems(Array.isArray(d) ? d : []); setLoadingTodo(false); })
+      .catch(() => setLoadingTodo(false));
+  }, [mq]);
 
-  const refresh = useCallback(() => {
-    loadAlexa(); loadTodo();
-    setLastRefresh(new Date().toLocaleTimeString());
-  }, [loadAlexa, loadTodo]);
+  useEffect(() => { loadAlexa(); loadTodo(); }, [loadAlexa, loadTodo, refreshKey]);
+
+  const alexaDelete = id => api.del(`/api/alexa/items/${id}?list=${aq}`).then(loadAlexa);
+  const alexaAdd = value => api.post(`/api/alexa/items?list=${aq}`, { value }).then(loadAlexa);
+  const todoDelete = id => api.del(`/api/todo/items/${id}?list=${mq}`).then(loadTodo);
+  const todoAdd = value => api.post(`/api/todo/items?list=${mq}`, { value }).then(loadTodo);
+
+  return <div style={{ marginBottom: 32 }}>
+    {showTitle && (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ color: C.alexa, fontWeight: 700, fontSize: 12 }}>⬡ {pair.alexa}</span>
+        <span style={{ color: C.muted }}>↔</span>
+        <span style={{ color: C.todo, fontWeight: 700, fontSize: 12 }}>☑ {pair.ms}</span>
+        <Badge color={pair.sync_direction === "a2m" ? C.accentAmber : C.accent}>{pair.sync_direction}</Badge>
+        <span style={{ color: C.muted, fontSize: 11 }}>{pair.sync_interval}s</span>
+      </div>
+    )}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <Panel title="⬡ Alexa" color={C.alexa} badge={<Badge color={C.alexa}>{alexaItems.length} items</Badge>}>
+        <ItemList items={alexaItems} onDelete={alexaDelete} onAdd={alexaAdd} color={C.alexa} loading={loadingAlexa} />
+      </Panel>
+      <Panel title="☑ MS Todo" color={C.todo} badge={<Badge color={C.todo}>{todoItems.length} items</Badge>}>
+        <ItemList items={todoItems} onDelete={todoDelete} onAdd={todoAdd} color={C.todo} loading={loadingTodo} />
+      </Panel>
+    </div>
+  </div>;
+}
+
+function ListsTab() {
+  const [pairs, setPairs] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastRefresh, setLastRefresh] = useState(null);
 
   useEffect(() => {
-    api.get("/api/config").then(cfg => {
-      const interval = (cfg.sync_interval || 30) * 1000;
-      let lastMtime = null;
-      const check = () => {
-        api.get("/api/state/mtime").then(d => {
-          if (d.mtime !== lastMtime) {
-            lastMtime = d.mtime;
-            refresh();
-          }
-        });
-      };
-      check();
-      const t = setInterval(check, interval);
-      return () => clearInterval(t);
+    api.get("/api/config/lists").then(data => {
+      if (Array.isArray(data)) setPairs(data);
     });
+    let lastMtime = null;
+    const check = () => {
+      api.get("/api/state/mtime").then(d => {
+        if (d.mtime !== lastMtime) {
+          lastMtime = d.mtime;
+          setRefreshKey(k => k + 1);
+          setLastRefresh(new Date().toLocaleTimeString());
+        }
+      });
+    };
+    check();
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
   }, []);
 
-  const alexaDelete = (id) => api.del(`/api/alexa/items/${id}`).then(loadAlexa);
-  const alexaAdd = (value) => api.post("/api/alexa/items", { value }).then(loadAlexa);
-  const todoDelete = (id) => api.del(`/api/todo/items/${id}`).then(loadTodo);
-  const todoAdd = (value) => api.post("/api/todo/items", { value }).then(loadTodo);
+  if (!pairs) return <div style={{ color: C.muted, padding: 40, textAlign: "center" }}>laden...</div>;
 
   return <div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -191,15 +223,9 @@ function ListsTab() {
       </div>
       <span style={{ color: C.muted, fontSize: 11 }}>auto-refresh</span>
     </div>
-
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-      <Panel title="⬡ Alexa" color={C.alexa} badge={<><Badge color={C.alexa}>{alexaItems.length} items</Badge></>}>
-        <ItemList items={alexaItems} onDelete={alexaDelete} onAdd={alexaAdd} color={C.alexa} loading={loadingAlexa} />
-      </Panel>
-      <Panel title="☑ MS Todo" color={C.todo} badge={<><Badge color={C.todo}>{todoItems.length} items</Badge></>}>
-        <ItemList items={todoItems} onDelete={todoDelete} onAdd={todoAdd} color={C.todo} loading={loadingTodo} />
-      </Panel>
-    </div>
+    {pairs.map((pair, i) => (
+      <PairPanel key={`${pair.alexa}|${pair.ms}`} pair={pair} showTitle={pairs.length > 1} refreshKey={refreshKey} />
+    ))}
   </div>;
 }
 
@@ -207,14 +233,85 @@ function ListsTab() {
 // Config Tab
 // ---------------------------------------------------------------------------
 
+const EMPTY_PAIR = { alexa: "", ms: "", sync_direction: "both", delete_origin: false, sync_interval: 30 };
+
+function ListPairEditor({ lists, onChange }) {
+  const add = () => onChange([...lists, { ...EMPTY_PAIR }]);
+  const remove = i => onChange(lists.filter((_, j) => j !== i));
+  const upd = (i, field, val) => onChange(lists.map((p, j) => j === i ? { ...p, [field]: val } : p));
+
+  const colHdr = (label, flex = "1") => (
+    <span style={{ color: C.muted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", flex }}>{label}</span>
+  );
+
+  return <div>
+    <div style={{ display: "flex", gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>
+      {colHdr("Alexa Liste")} {colHdr("MS Todo Liste")} {colHdr("Richtung", "0 0 110px")}
+      {colHdr("Delete", "0 0 90px")} {colHdr("Interval s", "0 0 80px")} {colHdr("", "0 0 32px")}
+    </div>
+    {lists.map((pair, i) => (
+      <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+        <div style={{ flex: 1 }}><Input value={pair.alexa} onChange={e => upd(i, "alexa", e.target.value)} placeholder="Alexa Liste" /></div>
+        <div style={{ flex: 1 }}><Input value={pair.ms} onChange={e => upd(i, "ms", e.target.value)} placeholder="MS Todo Liste" /></div>
+        <div style={{ flex: "0 0 110px" }}>
+          <Select value={pair.sync_direction || "both"} onChange={e => upd(i, "sync_direction", e.target.value)}>
+            <option value="both">both</option>
+            <option value="a2m">a2m</option>
+          </Select>
+        </div>
+        <div style={{ flex: "0 0 90px" }}>
+          <Select value={pair.delete_origin ? "true" : "false"} onChange={e => upd(i, "delete_origin", e.target.value === "true")}>
+            <option value="false">del: off</option>
+            <option value="true">del: on</option>
+          </Select>
+        </div>
+        <div style={{ flex: "0 0 80px" }}>
+          <Input type="number" value={pair.sync_interval || 30} onChange={e => upd(i, "sync_interval", parseInt(e.target.value) || 30)} />
+        </div>
+        <div style={{ flex: "0 0 32px" }}>
+          <Btn onClick={() => remove(i)} color={C.accentRed} style={{ padding: "5px 8px" }}>✕</Btn>
+        </div>
+      </div>
+    ))}
+    <Btn onClick={add} color={C.accent} style={{ marginTop: 4 }}>+ Paar</Btn>
+  </div>;
+}
+
 function ConfigTab() {
   const [config, setConfig] = useState(null);
+  const [lists, setLists] = useState(null);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { api.get("/api/config").then(setConfig); }, []);
+  useEffect(() => {
+    api.get("/api/config").then(cfg => {
+      setConfig(cfg);
+      if (cfg.lists && cfg.lists.length > 0) {
+        setLists(cfg.lists.map(p => ({
+          alexa: p.alexa || "",
+          ms: p.ms || "",
+          sync_direction: p.sync_direction || cfg.sync_direction || "both",
+          delete_origin: p.delete_origin != null ? p.delete_origin : (cfg.delete_origin || false),
+          sync_interval: p.sync_interval || cfg.sync_interval || 30,
+        })));
+      } else {
+        setLists([{
+          alexa: cfg.alexa_list_name || "",
+          ms: cfg.ms_list_name || "",
+          sync_direction: cfg.sync_direction || "both",
+          delete_origin: cfg.delete_origin || false,
+          sync_interval: cfg.sync_interval || 30,
+        }]);
+      }
+    });
+  }, []);
 
   const save = () => {
-    api.post("/api/config", config).then(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); });
+    api.post("/api/config", {
+      lists,
+      webserver: config.webserver,
+      webserver_port: config.webserver_port,
+      amazon_url: config.amazon_url,
+    }).then(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); });
   };
 
   const row = (label, content) => (
@@ -224,36 +321,25 @@ function ConfigTab() {
     </div>
   );
 
-  const section = (label) => (
+  const section = label => (
     <div style={{ color: C.dim, fontSize: 11, padding: "20px 0 12px", letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</div>
   );
 
-  if (!config) return <div style={{ color: C.muted, padding: 40 }}>laden...</div>;
+  if (!config || !lists) return <div style={{ color: C.muted, padding: 40 }}>laden...</div>;
 
-  return <div style={{ maxWidth: 800 }}>
+  return <div style={{ maxWidth: 900 }}>
     <Panel title="⚙ Konfiguration" color={C.accentAmber}>
       <div style={{ padding: "8px 24px 24px" }}>
-        {section("Listen")}
-        {row("alexa_list_name", <Input value={config.alexa_list_name || ""} onChange={e => setConfig({...config, alexa_list_name: e.target.value})} />)}
-        {row("ms_list_name", <Input value={config.ms_list_name || ""} onChange={e => setConfig({...config, ms_list_name: e.target.value})} />)}
-
-        {section("Sync")}
-        {row("sync_direction", <Select value={config.sync_direction || "both"} onChange={e => setConfig({...config, sync_direction: e.target.value})}>
-          <option value="both">both — bidirektional</option>
-          <option value="a2m">a2m — nur Alexa → Todo</option>
-        </Select>)}
-        {row("delete_origin", <Select value={config.delete_origin ? "true" : "false"} onChange={e => setConfig({...config, delete_origin: e.target.value === "true"})}>
-          <option value="false">false</option>
-          <option value="true">true</option>
-        </Select>)}
-        {row("sync_interval (s)", <Input type="number" value={config.sync_interval || 30} onChange={e => setConfig({...config, sync_interval: parseInt(e.target.value)})} />)}
+        {section("Listen-Paare")}
+        <ListPairEditor lists={lists} onChange={setLists} />
 
         {section("Webserver")}
-        {row("webserver", <Select value={config.webserver ? "true" : "false"} onChange={e => setConfig({...config, webserver: e.target.value === "true"})}>
+        {row("webserver", <Select value={config.webserver ? "true" : "false"} onChange={e => setConfig({ ...config, webserver: e.target.value === "true" })}>
           <option value="true">true</option>
           <option value="false">false</option>
         </Select>)}
-
+        {row("webserver_port", <Input type="number" value={config.webserver_port || 8080} onChange={e => setConfig({ ...config, webserver_port: parseInt(e.target.value) })} />)}
+        {row("amazon_url", <Input value={config.amazon_url || ""} onChange={e => setConfig({ ...config, amazon_url: e.target.value })} />)}
 
         <div style={{ paddingTop: 24 }}>
           <BtnPrimary onClick={save}>{saved ? "✓ gespeichert" : "speichern"}</BtnPrimary>

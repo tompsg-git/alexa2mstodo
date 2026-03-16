@@ -43,24 +43,43 @@ def save_config(data: dict):
         json.dump(data, f, indent=2)
 
 
-_alexa = None
-_todo = None
+_alexa_cache: dict = {}  # list_name → AlexaAPI
+_todo_cache: dict = {}   # list_name → MSTodo
 
 
-def get_alexa() -> AlexaAPI:
-    global _alexa
-    if _alexa is None:
-        _alexa = AlexaAPI(load_config())
-    return _alexa
+def _clear_list_caches():
+    _alexa_cache.clear()
+    _todo_cache.clear()
 
 
-def get_todo() -> MSTodo:
-    global _todo
-    if _todo is None:
-        config = load_config()
-        _todo = MSTodo(config, config_path=CONFIG_PATH)
-        _todo.connect()
-    return _todo
+def _default_alexa_list(config: dict) -> str:
+    if "lists" in config and config["lists"]:
+        return config["lists"][0]["alexa"]
+    return config.get("alexa_list_name", "")
+
+
+def _default_todo_list(config: dict) -> str:
+    if "lists" in config and config["lists"]:
+        return config["lists"][0]["ms"]
+    return config.get("ms_list_name", "")
+
+
+def get_alexa(list_name: str = None) -> AlexaAPI:
+    config = load_config()
+    name = list_name if list_name is not None else _default_alexa_list(config)
+    if name not in _alexa_cache:
+        _alexa_cache[name] = AlexaAPI({**config, "alexa_list_name": name})
+    return _alexa_cache[name]
+
+
+def get_todo(list_name: str = None) -> MSTodo:
+    config = load_config()
+    name = list_name if list_name is not None else _default_todo_list(config)
+    if name not in _todo_cache:
+        todo = MSTodo({**config, "ms_list_name": name}, config_path=CONFIG_PATH)
+        todo.connect()
+        _todo_cache[name] = todo
+    return _todo_cache[name]
 
 
 def load_state() -> dict:
@@ -87,7 +106,7 @@ def index():
 @app.route("/api/alexa/items", methods=["GET"])
 def alexa_items():
     try:
-        alexa = get_alexa()
+        alexa = get_alexa(request.args.get("list"))
         items = alexa.get_active_items()
         return jsonify([{"id": i.id, "value": i.value} for i in items])
     except Exception as e:
@@ -100,7 +119,7 @@ def alexa_add_item():
     if not value:
         return jsonify({"error": "value required"}), 400
     try:
-        alexa = get_alexa()
+        alexa = get_alexa(request.args.get("list"))
         item = alexa.add_item(value)
         return jsonify({"id": item.id, "value": item.value})
     except Exception as e:
@@ -110,7 +129,7 @@ def alexa_add_item():
 @app.route("/api/alexa/items/<item_id>", methods=["DELETE"])
 def alexa_delete_item(item_id):
     try:
-        alexa = get_alexa()
+        alexa = get_alexa(request.args.get("list"))
         items = alexa.get_active_items()
         item = next((i for i in items if i.id == item_id), None)
         if not item:
@@ -124,7 +143,7 @@ def alexa_delete_item(item_id):
 @app.route("/api/todo/items", methods=["GET"])
 def todo_items():
     try:
-        todo = get_todo()
+        todo = get_todo(request.args.get("list"))
         items = todo.get_items()
         return jsonify([{"id": i.id, "value": i.value, "completed": i.completed} for i in items])
     except Exception as e:
@@ -137,7 +156,7 @@ def todo_add_item():
     if not value:
         return jsonify({"error": "value required"}), 400
     try:
-        todo = get_todo()
+        todo = get_todo(request.args.get("list"))
         item = todo.add_item(value)
         return jsonify({"id": item.id, "value": item.value})
     except Exception as e:
@@ -147,7 +166,7 @@ def todo_add_item():
 @app.route("/api/todo/items/<item_id>", methods=["DELETE"])
 def todo_delete_item(item_id):
     try:
-        todo = get_todo()
+        todo = get_todo(request.args.get("list"))
         items = todo.get_items()
         item = next((i for i in items if i.id == item_id), None)
         if not item:
@@ -169,10 +188,17 @@ def get_state():
 
 @app.route("/api/state/mtime", methods=["GET"])
 def state_mtime():
-    state_path = os.path.join(os.path.dirname(CONFIG_PATH), "state.json")
-    if os.path.exists(state_path):
-        return jsonify({"mtime": os.path.getmtime(state_path)})
-    return jsonify({"mtime": 0})
+    config = load_config()
+    config_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
+    if "lists" in config:
+        state_files = [
+            os.path.join(config_dir, f"state_{p['alexa'].lower().replace(' ', '_')}.json")
+            for p in config["lists"]
+        ]
+    else:
+        state_files = [os.path.join(config_dir, "state.json")]
+    mtime = max((os.path.getmtime(f) for f in state_files if os.path.exists(f)), default=0)
+    return jsonify({"mtime": mtime})
 
 
 # ---------------------------------------------------------------------------
@@ -199,12 +225,23 @@ def update_config():
             "sync_direction", "delete_origin", "sync_interval",
             "alexa_list_name", "ms_list_name",
             "webserver", "webserver_port", "amazon_url",
+            "lists",
         )
         for key in allowed:
             if key in request.json:
                 config[key] = request.json[key]
         save_config(config)
+        _clear_list_caches()
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/lists", methods=["GET"])
+def config_lists():
+    try:
+        from utils import get_list_pairs
+        return jsonify(get_list_pairs(load_config()))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
