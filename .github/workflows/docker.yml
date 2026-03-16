@@ -6,6 +6,12 @@ on:
       - main
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image-Tag (z.B. v2.0)"
+        required: true
+        default: "manual"
 
 jobs:
   test:
@@ -60,6 +66,7 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and Push
         uses: docker/build-push-action@v5
