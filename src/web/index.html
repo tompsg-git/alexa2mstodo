@@ -334,7 +334,6 @@ function ConfigTab() {
       lists,
       webserver: config.webserver,
       webserver_port: config.webserver_port,
-      amazon_url: config.amazon_url,
     }).then(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); });
   };
 
@@ -368,7 +367,6 @@ function ConfigTab() {
           <option value="false">false</option>
         </Select>)}
         {row("webserver_port", <Input type="number" value={config.webserver_port || 8080} onChange={e => setConfig({ ...config, webserver_port: parseInt(e.target.value) })} />)}
-        {row("amazon_url", <Input value={config.amazon_url || ""} onChange={e => setConfig({ ...config, amazon_url: e.target.value })} />)}
 
         <div style={{ paddingTop: 24 }}>
           <BtnPrimary onClick={save}>{saved ? "✓ gespeichert" : "speichern"}</BtnPrimary>
