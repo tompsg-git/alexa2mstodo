@@ -180,10 +180,10 @@ function PairPanel({ pair, showTitle, refreshKey }) {
       </div>
     )}
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-      <Panel title="⬡ Alexa" color={C.alexa} badge={<Badge color={C.alexa}>{alexaItems.length} items</Badge>}>
+      <Panel title={`⬡ ALEXA — ${pair.alexa.toUpperCase()}`} color={C.alexa} badge={<Badge color={C.alexa}>{alexaItems.length} ITEMS</Badge>}>
         <ItemList items={alexaItems} onDelete={alexaDelete} onAdd={alexaAdd} color={C.alexa} loading={loadingAlexa} />
       </Panel>
-      <Panel title="☑ MS Todo" color={C.todo} badge={<Badge color={C.todo}>{todoItems.length} items</Badge>}>
+      <Panel title={`☑ MS TODO — ${pair.ms.toUpperCase()}`} color={C.todo} badge={<Badge color={C.todo}>{todoItems.length} ITEMS</Badge>}>
         <ItemList items={todoItems} onDelete={todoDelete} onAdd={todoAdd} color={C.todo} loading={loadingTodo} />
       </Panel>
     </div>
