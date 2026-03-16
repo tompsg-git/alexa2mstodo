@@ -46,6 +46,45 @@ def choose_from_list(items: list, label_fn, title: str) -> int:
     sys.exit(1)
 
 
+def get_list_pairs(config: dict) -> list[dict]:
+    """Gibt eine Liste von Listen-Paaren zurück.
+
+    Unterstützt das neue Multi-Listen-Format::
+
+        {"lists": [{"alexa": "Einkaufen", "ms": "Einkaufen", "sync_direction": "both"}, ...]}
+
+    und das alte Einzellisten-Format (rückwärtskompatibel)::
+
+        {"alexa_list_name": "Einkaufen", "ms_list_name": "Einkaufen"}
+
+    Jedes zurückgegebene Paar enthält die Schlüssel:
+    ``alexa``, ``ms``, ``sync_direction``, ``delete_origin``.
+    Fehlende Werte werden aus dem Top-Level-Config befüllt.
+    """
+    default_direction = config.get("sync_direction", "both")
+    default_delete = config.get("delete_origin", False)
+
+    if "lists" in config:
+        return [
+            {
+                "alexa": pair["alexa"],
+                "ms": pair["ms"],
+                "sync_direction": pair.get("sync_direction", default_direction),
+                "delete_origin": pair.get("delete_origin", default_delete),
+            }
+            for pair in config["lists"]
+        ]
+
+    return [
+        {
+            "alexa": config["alexa_list_name"],
+            "ms": config["ms_list_name"],
+            "sync_direction": default_direction,
+            "delete_origin": default_delete,
+        }
+    ]
+
+
 def choose_alexa_list(config: dict) -> tuple[str, str]:
     """Gibt (listId, listName) zurück."""
     from alexa import AlexaAPI

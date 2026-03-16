@@ -22,6 +22,7 @@ import time
 
 from synchronizer import Synchronizer
 from synchronizer_a2m import SynchronizerA2M
+from utils import get_list_pairs
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/config/config.json")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -135,48 +136,78 @@ def main():
         except Exception as e:
             log.warning("Webserver konnte nicht gestartet werden: %s", e)
 
-    if direction == "a2m":
-        SyncClass = SynchronizerA2M
-    elif direction == "both":
-        SyncClass = Synchronizer
-    else:
-        log.error("Ungültige sync_direction '%s' — erlaubt: both, a2m", direction)
-        sys.exit(1)
-    sync = SyncClass(config, state_path=os.path.join(os.path.dirname(CONFIG_PATH), "state.json"))
+    pairs = get_list_pairs(config)
+    multi = "lists" in config  # True = neues Format → eigene State-Dateien
+    config_dir = os.path.dirname(CONFIG_PATH)
+
+    log.info("  Listen-Paare   : %d", len(pairs))
+
+    syncs = []
+    for i, pair in enumerate(pairs):
+        dir_pair = pair["sync_direction"]
+        if dir_pair == "a2m":
+            SyncClass = SynchronizerA2M
+        elif dir_pair == "both":
+            SyncClass = Synchronizer
+        else:
+            log.error("Ungültige sync_direction '%s' in Paar %d — erlaubt: both, a2m", dir_pair, i)
+            sys.exit(1)
+
+        pair_config = {
+            **config,
+            "alexa_list_name": pair["alexa"],
+            "ms_list_name": pair["ms"],
+            "sync_direction": dir_pair,
+            "delete_origin": pair["delete_origin"],
+        }
+
+        if multi:
+            safe = pair["alexa"].lower().replace(" ", "_")
+            state_path = os.path.join(config_dir, f"state_{safe}.json")
+        else:
+            state_path = os.path.join(config_dir, "state.json")
+
+        log.info("  Paar %d: '%s' ↔ '%s' [%s]", i, pair["alexa"], pair["ms"], dir_pair)
+        syncs.append(SyncClass(pair_config, state_path=state_path))
 
     # Wait until both Alexa cookie and MS token are present and valid.
     # This prevents a device-code flow from appearing in the log/shell before
     # the user has authenticated via the web interface.
     _wait_for_credentials(config, CONFIG_PATH)
 
-    # Connect (triggers MS Todo device-code auth on first run)
-    try:
-        sync.connect()
-    except Exception as e:
-        log.error("Failed to connect: %s", e)
-        sys.exit(2)
-
-    # Initial merge
-    state_file = os.path.join(os.path.dirname(CONFIG_PATH), "state.json")
-    if not os.path.exists(state_file):
-        log.info("No state file found — running initial sync")
+    # Connect
+    for sync in syncs:
         try:
-            sync.initial_sync()
+            sync.connect()
         except Exception as e:
-            log.error("Initial sync failed: %s", e)
-            # Not fatal — we'll try again on the next cycle
+            log.error("Failed to connect ('%s' ↔ '%s'): %s",
+                      sync.config["alexa_list_name"], sync.config["ms_list_name"], e)
+            sys.exit(2)
+
+    # Initial merge (per pair)
+    for sync in syncs:
+        if not os.path.exists(sync.state_path):
+            log.info("No state file found for '%s' — running initial sync",
+                     sync.config["alexa_list_name"])
+            try:
+                sync.initial_sync()
+            except Exception as e:
+                log.error("Initial sync failed for '%s': %s",
+                          sync.config["alexa_list_name"], e)
+                # Not fatal — we'll try again on the next cycle
 
     # Main loop
     log.info("Entering sync loop (every %ds). Press Ctrl+C to stop.", SYNC_INTERVAL)
     while True:
-        try:
-            sync.sync()
-        except KeyboardInterrupt:
-            log.info("Interrupted by user.")
-            break
-        except Exception as e:
-            log.error("Sync cycle error: %s", e, exc_info=True)
-            # Container will restart on crash — but try to keep going
+        for sync in syncs:
+            try:
+                sync.sync()
+            except KeyboardInterrupt:
+                log.info("Interrupted by user.")
+                sys.exit(0)
+            except Exception as e:
+                log.error("Sync cycle error ('%s'): %s",
+                          sync.config["alexa_list_name"], e, exc_info=True)
         time.sleep(SYNC_INTERVAL)
 
 
