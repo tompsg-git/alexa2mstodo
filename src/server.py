@@ -159,6 +159,7 @@ def main():
             "ms_list_name": pair["ms"],
             "sync_direction": dir_pair,
             "delete_origin": pair["delete_origin"],
+            "sync_interval": pair["sync_interval"],
         }
 
         if multi:
@@ -167,7 +168,8 @@ def main():
         else:
             state_path = os.path.join(config_dir, "state.json")
 
-        log.info("  Paar %d: '%s' ↔ '%s' [%s]", i, pair["alexa"], pair["ms"], dir_pair)
+        log.info("  Paar %d: '%s' ↔ '%s' [%s, %ds]",
+                 i, pair["alexa"], pair["ms"], dir_pair, pair["sync_interval"])
         syncs.append(SyncClass(pair_config, state_path=state_path))
 
     # Wait until both Alexa cookie and MS token are present and valid.
@@ -196,19 +198,25 @@ def main():
                           sync.config["alexa_list_name"], e)
                 # Not fatal — we'll try again on the next cycle
 
-    # Main loop
-    log.info("Entering sync loop (every %ds). Press Ctrl+C to stop.", SYNC_INTERVAL)
+    # Main loop — per-pair interval tracking
+    sync_intervals = [pair["sync_interval"] for pair in pairs]
+    last_sync = [0.0] * len(syncs)
+
+    log.info("Entering sync loop. Press Ctrl+C to stop.")
     while True:
-        for sync in syncs:
-            try:
-                sync.sync()
-            except KeyboardInterrupt:
-                log.info("Interrupted by user.")
-                sys.exit(0)
-            except Exception as e:
-                log.error("Sync cycle error ('%s'): %s",
-                          sync.config["alexa_list_name"], e, exc_info=True)
-        time.sleep(SYNC_INTERVAL)
+        now = time.time()
+        for i, sync in enumerate(syncs):
+            if now - last_sync[i] >= sync_intervals[i]:
+                try:
+                    sync.sync()
+                except KeyboardInterrupt:
+                    log.info("Interrupted by user.")
+                    sys.exit(0)
+                except Exception as e:
+                    log.error("Sync cycle error ('%s'): %s",
+                              sync.config["alexa_list_name"], e, exc_info=True)
+                last_sync[i] = time.time()
+        time.sleep(1)
 
 
 if __name__ == "__main__":

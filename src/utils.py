@@ -58,11 +58,12 @@ def get_list_pairs(config: dict) -> list[dict]:
         {"alexa_list_name": "Einkaufen", "ms_list_name": "Einkaufen"}
 
     Jedes zurückgegebene Paar enthält die Schlüssel:
-    ``alexa``, ``ms``, ``sync_direction``, ``delete_origin``.
+    ``alexa``, ``ms``, ``sync_direction``, ``delete_origin``, ``sync_interval``.
     Fehlende Werte werden aus dem Top-Level-Config befüllt.
     """
     default_direction = config.get("sync_direction", "both")
     default_delete = config.get("delete_origin", False)
+    default_interval = int(config.get("sync_interval", 30))
 
     if "lists" in config:
         return [
@@ -71,6 +72,7 @@ def get_list_pairs(config: dict) -> list[dict]:
                 "ms": pair["ms"],
                 "sync_direction": pair.get("sync_direction", default_direction),
                 "delete_origin": pair.get("delete_origin", default_delete),
+                "sync_interval": int(pair.get("sync_interval", default_interval)),
             }
             for pair in config["lists"]
         ]
@@ -81,6 +83,7 @@ def get_list_pairs(config: dict) -> list[dict]:
             "ms": config["ms_list_name"],
             "sync_direction": default_direction,
             "delete_origin": default_delete,
+            "sync_interval": default_interval,
         }
     ]
 

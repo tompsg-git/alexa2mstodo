@@ -78,13 +78,15 @@ class TestGetListPairs:
             "ms": "Einkaufen",
             "sync_direction": "both",
             "delete_origin": False,
+            "sync_interval": 30,
         }
 
     def test_old_format_uses_top_level_defaults(self):
-        config = {**self._base(), "sync_direction": "a2m", "delete_origin": True}
+        config = {**self._base(), "sync_direction": "a2m", "delete_origin": True, "sync_interval": 60}
         result = get_list_pairs(config)
         assert result[0]["sync_direction"] == "a2m"
         assert result[0]["delete_origin"] is True
+        assert result[0]["sync_interval"] == 60
 
     def test_new_format_multiple_pairs(self):
         config = {
@@ -105,10 +107,12 @@ class TestGetListPairs:
         config = {
             **self._base(),
             "sync_direction": "a2m",
+            "sync_interval": 120,
             "lists": [{"alexa": "Liste", "ms": "Liste"}],
         }
         result = get_list_pairs(config)
         assert result[0]["sync_direction"] == "a2m"
+        assert result[0]["sync_interval"] == 120
 
     def test_new_format_pair_overrides_direction(self):
         config = {
@@ -133,6 +137,27 @@ class TestGetListPairs:
         }
         result = get_list_pairs(config)
         assert result[0]["delete_origin"] is True
+
+    def test_new_format_pair_overrides_interval(self):
+        config = {
+            **self._base(),
+            "sync_interval": 30,
+            "lists": [
+                {"alexa": "A", "ms": "A", "sync_interval": 90},
+                {"alexa": "B", "ms": "B"},
+            ],
+        }
+        result = get_list_pairs(config)
+        assert result[0]["sync_interval"] == 90
+        assert result[1]["sync_interval"] == 30
+
+    def test_new_format_interval_as_string(self):
+        config = {
+            **self._base(),
+            "lists": [{"alexa": "A", "ms": "A", "sync_interval": "45"}],
+        }
+        result = get_list_pairs(config)
+        assert result[0]["sync_interval"] == 45
 
     def test_new_format_single_entry(self):
         config = {
