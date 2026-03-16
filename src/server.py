@@ -22,7 +22,7 @@ import time
 
 from synchronizer import Synchronizer
 from synchronizer_a2m import SynchronizerA2M
-from utils import get_list_pairs
+from utils import get_list_pairs, resolve_path
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/config/config.json")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -77,7 +77,6 @@ def _wait_for_credentials(config: dict, config_path: str) -> None:
     Runs before sync.connect() so that no interactive device-code flow is
     triggered while credentials are still missing.
     """
-    from utils import resolve_path
     alexa_cookie = resolve_path(
         config.get("alexa_cookie_file", "alexa_cookie.json"), config_path
     )
@@ -99,24 +98,63 @@ def _wait_for_credentials(config: dict, config_path: str) -> None:
         time.sleep(10)
 
 
+def _apply_env_overrides(config: dict) -> dict:
+    """Überschreibt ausgewählte Config-Werte mit Umgebungsvariablen."""
+    if "SYNC_INTERVAL" in os.environ:
+        config["sync_interval"] = int(os.environ["SYNC_INTERVAL"])
+    if "SYNC_DIRECTION" in os.environ:
+        config["sync_direction"] = os.environ["SYNC_DIRECTION"]
+    if "DELETE_ORIGIN" in os.environ:
+        config["delete_origin"] = os.environ["DELETE_ORIGIN"].lower() == "true"
+    return config
+
+
+def _make_sync(config: dict, pair: dict, config_dir: str, multi: bool):
+    """Erstellt einen Synchronizer für ein Listen-Paar."""
+    dir_pair = pair["sync_direction"]
+    SyncClass = SynchronizerA2M if dir_pair == "a2m" else Synchronizer
+    pair_config = {
+        **config,
+        "alexa_list_name": pair["alexa"],
+        "ms_list_name": pair["ms"],
+        "sync_direction": dir_pair,
+        "delete_origin": pair["delete_origin"],
+        "sync_interval": pair["sync_interval"],
+    }
+    if multi:
+        safe = pair["alexa"].lower().replace(" ", "_")
+        state_path = os.path.join(config_dir, f"state_{safe}.json")
+    else:
+        state_path = os.path.join(config_dir, "state.json")
+    return SyncClass(pair_config, state_path=state_path)
+
+
+def _connect_and_init(sync) -> bool:
+    """Verbindet einen Synchronizer und führt ggf. Initial-Sync durch.
+    Gibt True bei Erfolg zurück."""
+    alexa_name = sync.config["alexa_list_name"]
+    ms_name = sync.config["ms_list_name"]
+    try:
+        sync.connect()
+    except Exception as e:
+        log.error("Failed to connect ('%s' ↔ '%s'): %s", alexa_name, ms_name, e)
+        return False
+    if not os.path.exists(sync.state_path):
+        log.info("No state file for '%s' — running initial sync", alexa_name)
+        try:
+            sync.initial_sync()
+        except Exception as e:
+            log.error("Initial sync failed for '%s': %s", alexa_name, e)
+    return True
+
+
 def main():
     config = load_config(CONFIG_PATH)
-
-    SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", config.get("sync_interval", 30)))
-    direction = os.environ.get("SYNC_DIRECTION", config.get("sync_direction", "both"))
-    delete_origin = os.environ.get("DELETE_ORIGIN", str(config.get("delete_origin", False))).lower() == "true"
-
-    # Zurückschreiben damit Synchronizer die Werte aus config liest
-    config["sync_interval"] = SYNC_INTERVAL
-    config["sync_direction"] = direction
-    config["delete_origin"] = delete_origin
+    _apply_env_overrides(config)
 
     log.info("=" * 40)
     log.info("  alexa2mstodo starting")
     log.info("  Config         : %s", CONFIG_PATH)
-    log.info("  Sync direction : %s", direction)
-    log.info("  Delete origin  : %s", delete_origin)
-    log.info("  Sync interval  : %ds", SYNC_INTERVAL)
     log.info("=" * 40)
 
     # Expose config path so mstodo.py can write the refresh token back
@@ -136,75 +174,64 @@ def main():
         except Exception as e:
             log.warning("Webserver konnte nicht gestartet werden: %s", e)
 
-    pairs = get_list_pairs(config)
-    multi = "lists" in config  # True = neues Format → eigene State-Dateien
-    config_dir = os.path.dirname(CONFIG_PATH)
+    config_dir = os.path.dirname(os.path.abspath(CONFIG_PATH))
 
-    log.info("  Listen-Paare   : %d", len(pairs))
-
-    syncs = []
-    for i, pair in enumerate(pairs):
-        dir_pair = pair["sync_direction"]
-        if dir_pair == "a2m":
-            SyncClass = SynchronizerA2M
-        elif dir_pair == "both":
-            SyncClass = Synchronizer
-        else:
-            log.error("Ungültige sync_direction '%s' in Paar %d — erlaubt: both, a2m", dir_pair, i)
-            sys.exit(1)
-
-        pair_config = {
-            **config,
-            "alexa_list_name": pair["alexa"],
-            "ms_list_name": pair["ms"],
-            "sync_direction": dir_pair,
-            "delete_origin": pair["delete_origin"],
-            "sync_interval": pair["sync_interval"],
-        }
-
-        if multi:
-            safe = pair["alexa"].lower().replace(" ", "_")
-            state_path = os.path.join(config_dir, f"state_{safe}.json")
-        else:
-            state_path = os.path.join(config_dir, "state.json")
-
-        log.info("  Paar %d: '%s' ↔ '%s' [%s, %ds]",
-                 i, pair["alexa"], pair["ms"], dir_pair, pair["sync_interval"])
-        syncs.append(SyncClass(pair_config, state_path=state_path))
-
-    # Wait until both Alexa cookie and MS token are present and valid.
-    # This prevents a device-code flow from appearing in the log/shell before
-    # the user has authenticated via the web interface.
     _wait_for_credentials(config, CONFIG_PATH)
 
-    # Connect
-    for sync in syncs:
-        try:
-            sync.connect()
-        except Exception as e:
-            log.error("Failed to connect ('%s' ↔ '%s'): %s",
-                      sync.config["alexa_list_name"], sync.config["ms_list_name"], e)
+    # Initiale Paare aufbauen und verbinden
+    pairs = get_list_pairs(config)
+    multi = "lists" in config
+    syncs: list = []
+    last_sync: list = []
+
+    for pair in pairs:
+        sync = _make_sync(config, pair, config_dir, multi)
+        if _connect_and_init(sync):
+            log.info("  Paar: '%s' ↔ '%s' [%s, %ds]",
+                     pair["alexa"], pair["ms"], pair["sync_direction"], pair["sync_interval"])
+            syncs.append(sync)
+            last_sync.append(0.0)
+        else:
             sys.exit(2)
 
-    # Initial merge (per pair)
-    for sync in syncs:
-        if not os.path.exists(sync.state_path):
-            log.info("No state file found for '%s' — running initial sync",
-                     sync.config["alexa_list_name"])
-            try:
-                sync.initial_sync()
-            except Exception as e:
-                log.error("Initial sync failed for '%s': %s",
-                          sync.config["alexa_list_name"], e)
-                # Not fatal — we'll try again on the next cycle
-
-    # Main loop — per-pair interval tracking
-    sync_intervals = [pair["sync_interval"] for pair in pairs]
-    last_sync = [0.0] * len(syncs)
-
+    # Main loop — per-pair interval tracking + Config-Hot-Reload
     log.info("Entering sync loop. Press Ctrl+C to stop.")
     while True:
+        # Config neu lesen und auf Änderungen prüfen
+        try:
+            fresh_config = load_config(CONFIG_PATH)
+            _apply_env_overrides(fresh_config)
+            fresh_pairs = get_list_pairs(fresh_config)
+            fresh_multi = "lists" in fresh_config
+        except Exception as e:
+            log.warning("Config reload failed: %s", e)
+            fresh_pairs = pairs
+            fresh_config = config
+            fresh_multi = multi
+
+        if fresh_pairs != pairs:
+            log.info("Konfiguration geändert — Liste der Paare wird aktualisiert")
+            old_last = {(pairs[i]["alexa"], pairs[i]["ms"]): last_sync[i]
+                        for i in range(len(pairs))}
+            new_syncs, new_last = [], []
+            for pair in fresh_pairs:
+                key = (pair["alexa"], pair["ms"])
+                sync = _make_sync(fresh_config, pair, config_dir, fresh_multi)
+                if key in old_last:
+                    # Bestehendes Paar — last_sync-Zeit übernehmen
+                    new_syncs.append(sync)
+                    new_last.append(old_last[key])
+                else:
+                    # Neues Paar — verbinden und sofort in den Loop aufnehmen
+                    log.info("Neues Paar: '%s' ↔ '%s'", pair["alexa"], pair["ms"])
+                    if _connect_and_init(sync):
+                        new_syncs.append(sync)
+                        new_last.append(0.0)
+            pairs, syncs, last_sync = fresh_pairs, new_syncs, new_last
+            config, multi = fresh_config, fresh_multi
+
         now = time.time()
+        sync_intervals = [p["sync_interval"] for p in pairs]
         for i, sync in enumerate(syncs):
             if now - last_sync[i] >= sync_intervals[i]:
                 try:
